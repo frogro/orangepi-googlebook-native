@@ -35,3 +35,13 @@ No boot, desktop, audio, DRM or hardware acceleration success has been establish
 Official Cuttlefish build 16373615 was downloaded and SHA256-verified; 36 reference files were extracted locally without mounts. None were installed or committed. The allocator is an Android37 ARM64 ELF and exports `backend_rockchip`. The generic DRM compositor links against `android.hardware.graphics.composer3-V5-ndk.so`, matching the Googlebook declaration. File hashes and direct ELF dependencies are recorded in donor-graphics-audit.json. This establishes concrete integration candidates, not buffer-sharing, linker-namespace, SELinux or runtime compatibility.
 
 The stock boot command line includes `binder.impl=rust` and Qualcomm pKVM protected modules; these must not be carried into the native boot config. The original userdata uses ext4 with file and metadata encryption. Retaining EROFS/F2FS support does not by itself implement the original Trusty/KeyMint security stack.
+
+## Disk layout validation
+
+The pinned Orange Pi 5 Plus EDK2 v1.1 donor contains Rockchip `RKNS` loader data at LBA64 and a boot firmware payload starting at 1 MiB. Its payload overlaps the stock Googlebook recovery partition at 2 MiB. Writing that donor over the recovery disk would corrupt data.
+
+`tools/plan-native-disk.py` now validates the firmware checksum and original GPT/LP metadata, checks all 38 source partition intervals, and plans a 32 MiB shift of every Android partition plus a separate 512 MiB ESP. Logical extents remain relative to `super`; their on-disk LP values must not change. New primary and backup GPTs are required. The tool emits a plan only and never writes a block device or disk image. Kernel, ramdisk and HAL integration remain prerequisites to assembling a bootable image.
+
+## Mesa cross-build correction
+
+Mesa's Panfrost shader generators require a native host build of `mesa_clc`, `vtn_bindgen2` and `panfrost_compile`. LLVM18 and matching SPIRV translator are host build dependencies only. SPIRV-Tools v2024.4 and its matching headers are pinned because the runner's packaged version is older than Mesa's minimum. The Android target uses these host tools with target LLVM disabled. A successful compiler build alone does not establish runtime graphics compatibility.

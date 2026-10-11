@@ -38,5 +38,11 @@
       "panfrost"
     ],
     "target": "arm64 Android API35 ABI on Android17; runtime unvalidated"
+  },
+  "uefi": {
+    "url": "https://github.com/edk2-porting/edk2-rk3588/releases/download/v1.1/orangepi-5plus_UEFI_Release_v1.1.img",
+    "sha256": "306fd8f9f61d8672b2a27f02821de6b1528552e7a32159283a5bacecf1a5b8ef",
+    "board": "Orange Pi 5 Plus",
+    "copy_policy": "Preserve Rockchip payload starting at LBA64; generate a separate GPT"
   }
 }
