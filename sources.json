@@ -22,5 +22,21 @@
   "android_reference": {
     "url": "https://github.com/frogro/orangepi-android16-mainline",
     "commit": "7afe814f383affb89bac7fced1ade231e4dea6e7"
+  },
+  "cuttlefish": {
+    "build": "16373615",
+    "artifact": "aosp_cf_arm64_only_phone-img-16373615.zip",
+    "page": "https://ci.android.com/builds/submitted/16373615/aosp_cf_arm64_only_phone-userdebug/latest/aosp_cf_arm64_only_phone-img-16373615.zip",
+    "sha256": "051caf8072ba9fb417e05999de2984752e44e13ce70b6c49c669f0a73db85c18",
+    "purpose": "Evaluate generic Android 17 userspace HALs only; never reuse donor kernel modules on RK3588"
+  },
+  "mesa": {
+    "url": "https://archive.mesa3d.org/mesa-26.2.4.tar.xz",
+    "sha256": "bce5f7fbebb934373b86c999a064d52fb5065878dc57f287f95346648ec832e9",
+    "ndk": "28.2.13676358",
+    "drivers": [
+      "panfrost"
+    ],
+    "target": "arm64 Android API35 ABI on Android17; runtime unvalidated"
   }
 }
