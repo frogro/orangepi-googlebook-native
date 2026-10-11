@@ -16,8 +16,12 @@ spec=importlib.util.spec_from_file_location('erofs_metadata',Path(__file__).reso
 e=importlib.util.module_from_spec(spec);spec.loader.exec_module(e);e.D=a.tools/'dump.erofs'
 def meta(path):return e.metadata(a.source,path,a.offset)
 def cat(image,path,offset=0):return subprocess.check_output([str(e.D),f'--offset={offset}','--path='+path,'--cat',str(image)])
-files={};dirs={'.'}
+files={};dirs={'.'};newdirs={}
 for stage in a.stage:
+ manifest=json.loads((stage/'manifest.json').read_text())
+ for name,label in manifest.get('directories',{}).items():
+  assert name.startswith('firmware/arm') and '..' not in Path(name).parts and label=='vendor_firmware_file'
+  newdirs[name]=label;dirs.add(name)
  for f in json.loads((stage/'manifest.json').read_text())['files']:
   name=f['path'];rel=Path(name)
   if rel.is_absolute() or '..' in rel.parts or name in files:raise ValueError('Unsafe or duplicate path: '+name)
@@ -30,7 +34,8 @@ with tarfile.open(a.output/'overlay.tar','w',format=tarfile.PAX_FORMAT) as t:
  for name in sorted(dirs,key=lambda n:(len(Path(n).parts),n)):
   path='/' if name=='.' else '/'+name
   # The only directory added by current stages; all other ancestors must exist.
-  if name=='lib64/native_keymint':m={'mode':0o40755,'uid':0,'gid':0,'mtime':1230768000,'xattrs':{'security.selinux':b'u:object_r:vendor_file:s0'}}
+  if name in newdirs:m={'mode':0o40755,'uid':0,'gid':0,'mtime':1230768000,'xattrs':{'security.selinux':('u:object_r:'+newdirs[name]+':s0').encode()}}
+  elif name=='lib64/native_keymint':m={'mode':0o40755,'uid':0,'gid':0,'mtime':1230768000,'xattrs':{'security.selinux':b'u:object_r:vendor_file:s0'}}
   else:m=meta(path);original[path]=m
   ti=tarfile.TarInfo(name);ti.type=tarfile.DIRTYPE;ti.mode=m['mode']&0o7777;ti.uid=m['uid'];ti.gid=m['gid'];ti.mtime=m['mtime']
   ti.pax_headers={} if name=='.' else {'SCHILY.xattr.'+k:v.decode() for k,v in m['xattrs'].items()};t.addfile(ti)

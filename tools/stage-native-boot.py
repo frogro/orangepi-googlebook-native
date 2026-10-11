@@ -28,11 +28,14 @@ with tempfile.TemporaryDirectory(dir=a.image.parent,prefix='native-boot-') as te
   src.seek(start);left=end-start
   while left:
    b=src.read(min(left,4<<20));assert b;dst.write(b);left-=len(b)
- subprocess.run(['mmd','-i',str(fat),'::/boot','::/boot/grub'],check=True)
+ if 'esp_sha256' in report:
+  assert hashlib.file_digest(fat.open('rb'),'sha256').hexdigest()==report['esp_sha256'],'ESP changed since last verified boot stage'
+ else:
+  subprocess.run(['mmd','-i',str(fat),'::/boot','::/boot/grub'],check=True)
  files['grub/native.cfg']=temp/'native.cfg';files['grub/native.cfg'].write_bytes(config)
  hashes={}
  for name,src in files.items():
-  subprocess.run(['mcopy','-i',str(fat),str(src),'::/boot/'+name],check=True)
+  subprocess.run(['mcopy','-o','-i',str(fat),str(src),'::/boot/'+name],check=True)
   back=temp/('readback-'+Path(name).name)
   subprocess.run(['mcopy','-i',str(fat),'::/boot/'+name,str(back)],check=True)
   digest=hashlib.file_digest(src.open('rb'),'sha256').hexdigest();assert hashlib.file_digest(back.open('rb'),'sha256').hexdigest()==digest

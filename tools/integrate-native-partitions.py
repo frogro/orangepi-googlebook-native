@@ -90,4 +90,7 @@ for name,extents in logical.items():
  if name not in replacements:assert new_logical[name]==extents,name
 subprocess.run(['sgdisk','-v',str(a.output)],check=True)
 report={'status':'PARTITIONS_INTEGRATED; boot and HAL integration still pending; not for flashing','source':str(a.source.resolve()),'replacements':{**(history['replacements'] if history else {}),**plan},'previous_integration':history,'metadata_copies_updated':len(records),'unmodified_extent_maps_preserved':True}
+if history:
+ for key in ['boot_files','esp_sha256']:
+  if key in history:report[key]=history[key]
 a.output.with_suffix('.integration.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
