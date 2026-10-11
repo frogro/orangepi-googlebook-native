@@ -4,7 +4,7 @@ import argparse,hashlib,importlib.util,json,os,stat,subprocess,tempfile
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 for n in ['image','artifact','initramfs']:p.add_argument(n,type=Path)
-a=p.parse_args();assert stat.S_ISREG(a.image.stat().st_mode)
+p.add_argument('--config',type=Path);a=p.parse_args();assert stat.S_ISREG(a.image.stat().st_mode)
 report=json.loads(a.image.with_suffix('.integration.json').read_text());assert report['status'].startswith('PARTITIONS_INTEGRATED')
 spec=importlib.util.spec_from_file_location('audit',Path(__file__).with_name('audit-userspace.py'));audit=importlib.util.module_from_spec(spec);spec.loader.exec_module(audit)
 gpt,_=audit.partitions(a.image);start,end=gpt['EFI']
@@ -21,6 +21,9 @@ menuentry 'Googlebook native RK3588 - experimental' {
     initrd /boot/initramfs-native.cpio.gz
 }
 '''
+if a.config:
+ config=a.config.read_bytes()
+ subprocess.run(['grub-script-check',str(a.config)],check=True)
 files={'Image':kernel,'rk3588-orangepi-5-plus.dtb':dtb,'initramfs-native.cpio.gz':a.initramfs}
 with tempfile.TemporaryDirectory(dir=a.image.parent,prefix='native-boot-') as temp:
  temp=Path(temp);fat=temp/'esp.img'
