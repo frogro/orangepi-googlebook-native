@@ -1,0 +1,76 @@
+{
+  "status": "STAGED_AIDL_VERSION_SUBSET_ONLY; not full checkvintf, instance/policy/runtime validation",
+  "matrix": "202604",
+  "interfaces": [
+    {
+      "file": "vendor.qti.hardware.display.allocator-service.xml",
+      "hal": "android.hardware.graphics.allocator",
+      "interface": "IAllocator",
+      "instance": "default",
+      "version": 3,
+      "framework_version_ranges_matching": [
+        "1-3"
+      ]
+    },
+    {
+      "file": "native-android.hardware.security.keymint-service.xml",
+      "hal": "android.hardware.security.keymint",
+      "interface": "IKeyMintDevice",
+      "instance": "default",
+      "version": 5,
+      "framework_version_ranges_matching": [
+        "1-5"
+      ]
+    },
+    {
+      "file": "native-android.hardware.security.keymint-service.xml",
+      "hal": "android.hardware.security.keymint",
+      "interface": "IRemotelyProvisionedComponent",
+      "instance": "default",
+      "version": 3,
+      "framework_version_ranges_matching": [
+        "1-3"
+      ]
+    },
+    {
+      "file": "native-android.hardware.security.secureclock-service.xml",
+      "hal": "android.hardware.security.secureclock",
+      "interface": "ISecureClock",
+      "instance": "default",
+      "version": 1,
+      "framework_version_ranges_matching": [
+        "1"
+      ]
+    },
+    {
+      "file": "native-android.hardware.security.sharedsecret-gatekeeper.xml",
+      "hal": "android.hardware.security.sharedsecret",
+      "interface": "ISharedSecret",
+      "instance": "gatekeeper",
+      "version": 1,
+      "framework_version_ranges_matching": [
+        "1"
+      ]
+    },
+    {
+      "file": "native-android.hardware.security.sharedsecret-service.xml",
+      "hal": "android.hardware.security.sharedsecret",
+      "interface": "ISharedSecret",
+      "instance": "default",
+      "version": 1,
+      "framework_version_ranges_matching": [
+        "1"
+      ]
+    },
+    {
+      "file": "android.hardware.gatekeeper-service.trusty.xml",
+      "hal": "android.hardware.gatekeeper",
+      "interface": "IGatekeeper",
+      "instance": "default",
+      "version": 1,
+      "framework_version_ranges_matching": [
+        "1"
+      ]
+    }
+  ]
+}

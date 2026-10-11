@@ -79,3 +79,11 @@ A duplicate Gatekeeper registration was identified before vendor import: the sto
 ## SELinux pathname correction
 
 The software Gatekeeper executable now uses `/vendor/bin/hw/android.hardware.gatekeeper-service`, which is already mapped to `hal_gatekeeper_default_exec`; candidate regenerated at `work/native-security-v3`. A libselinux pathname lookup against the combined platform/system_ext/product/vendor contexts found four added graphics libraries inheriting `vendor_file`. Exact entries in `config/native-graphics-file-contexts` assign their required existing `same_process_hal_file` type. With these entries, all 30 staged paths resolve to the requested labels. This verifies path labeling only; domain permissions, GPU sysfs/DMA-buffer access, policy compilation and device runtime remain unproven. No permissive mode or broad allow rules were added.
+
+## Framework version subset check
+
+The staged AIDL interface versions for allocator, KeyMint, remotely provisioned component, SecureClock, SharedSecret and Gatekeeper fall within the original framework matrix 202604 version ranges (`native-hal-version-audit.json`). The matrix allows composer3 versions 4–5, matching the inspected V5 compositor. This is a subset/version comparison, not a complete `checkvintf` pass or successful service registration. The kernel matrix names 6.18.0 without embedded option requirements; matching the 6.18 series therefore does not prove all Android kernel requirements.
+
+## Remaining assembly gates
+
+The local disk still contains the original Qualcomm vendor and module partitions. Prepared overlays have deliberately not been treated as installed. Remaining work includes reconciling all original service/APEX selections, synchronizing both fstab stages, replacing module partitions with this kernel's modules, validating Android linker namespaces and enforcing domain permissions, building the modified EROFS/LP/AVB layout, and then wiring the kernel/DTB/ramdisk into the ESP. Native Wi-Fi/Ethernet/audio hardware services and board firmware selection also need validation. Existing GPIO/display/kernel support alone is insufficient. No device boot or encrypted-data test has taken place.
