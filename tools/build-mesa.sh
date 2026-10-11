@@ -15,6 +15,22 @@ if [[ ! -f "$archive" ]]; then
 fi
 printf '%s  %s\n' bce5f7fbebb934373b86c999a064d52fb5065878dc57f287f95346648ec832e9 "$archive" | sha256sum -c -
 if [[ ! -d work/mesa/mesa-26.2.4 ]]; then tar -xf "$archive" -C work/mesa; fi
+# Shader generators run on the x86_64 builder, never on the Android target.
+# Ubuntu 24.04's SPIRV-Tools predates Mesa's minimum; build a pinned host copy.
+bash tools/build-spirv-host.sh
+export PKG_CONFIG_PATH="$ROOT/work/mesa/host-prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export PATH="/usr/lib/llvm-18/bin:$PATH"
+if [[ ! -f work/mesa/host/build.ninja ]]; then
+  meson setup work/mesa/host work/mesa/mesa-26.2.4 --buildtype=release \
+    --force-fallback-for=libdrm,expat \
+    -Dplatforms= -Dgallium-drivers=panfrost -Dvulkan-drivers= \
+    -Dllvm=enabled -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
+    -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dgallium-va=disabled \
+    -Dgles1=disabled -Dgles2=disabled -Dopengl=false -Dvideo-codecs=
+fi
+ninja -j2 -C work/mesa/host src/compiler/clc/mesa_clc \
+  src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+export PATH="$ROOT/work/mesa/host/src/compiler/clc:$ROOT/work/mesa/host/src/compiler/spirv:$ROOT/work/mesa/host/src/panfrost/clc:$PATH"
 cat > work/mesa/android.cross <<EOF
 [binaries]
 c = '$BIN/aarch64-linux-android35-clang'
@@ -37,6 +53,7 @@ if [[ ! -f work/mesa/build/build.ninja ]]; then
     --buildtype=release --force-fallback-for=libdrm,expat \
     -Dplatforms=android -Dplatform-sdk-version=35 -Dandroid-stub=true \
     -Dgallium-drivers=panfrost -Dvulkan-drivers=panfrost \
+    -Dmesa-clc=system -Dprecomp-compiler=system \
     -Dllvm=disabled -Dglx=disabled -Dgbm=enabled -Dgallium-va=disabled \
     -Dvideo-codecs= -Dzstd=disabled -Dandroid-libbacktrace=disabled \
     -Degl=enabled -Dgles1=enabled -Dgles2=enabled -Dopengl=true \

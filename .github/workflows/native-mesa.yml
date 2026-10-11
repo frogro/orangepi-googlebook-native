@@ -9,13 +9,13 @@ concurrency:
 jobs:
   mesa:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv bison flex pkg-config glslang-tools
+          sudo apt-get install -y python3-venv bison flex pkg-config glslang-tools cmake llvm-18-dev libclang-18-dev clang-18 libllvmspirvlib-18-dev libexpat1-dev zlib1g-dev libzstd-dev
       - name: Create pinned Python build environment
         run: |
           python3 -m venv work/env
@@ -37,5 +37,6 @@ jobs:
           path: |
             output/mesa/
             work/mesa/build/meson-logs/meson-log.txt
+            work/mesa/host/meson-logs/meson-log.txt
           if-no-files-found: warn
           retention-days: 14
