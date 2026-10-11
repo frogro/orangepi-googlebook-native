@@ -87,3 +87,13 @@ The staged AIDL interface versions for allocator, KeyMint, remotely provisioned 
 ## Remaining assembly gates
 
 The local disk still contains the original Qualcomm vendor and module partitions. Prepared overlays have deliberately not been treated as installed. Remaining work includes reconciling all original service/APEX selections, synchronizing both fstab stages, replacing module partitions with this kernel's modules, validating Android linker namespaces and enforcing domain permissions, building the modified EROFS/LP/AVB layout, and then wiring the kernel/DTB/ramdisk into the ESP. Native Wi-Fi/Ethernet/audio hardware services and board firmware selection also need validation. Existing GPIO/display/kernel support alone is insufficient. No device boot or encrypted-data test has taken place.
+
+## Resumed native integration: vendor filesystem candidate
+
+The user resumed Googlebook work after the earlier timed window. Background work is enabled again alongside the serial Android builds, without physical-device or SD writes.
+
+`tools/assemble-vendor-candidate.py` now merges the audited graphics and software-security stages into a separate EROFS file. It preserves existing ancestor inode metadata, restores the original compact root inode xattr body after incremental import, recomputes the EROFS checksum, runs fsck and reads back every staged file. The read-only metadata helper is from the already pinned MIT-licensed gbos-vm source.
+
+First successful output: `../work/native-vendor-v1/vendor.erofs` (398123008 bytes), SHA-256 `0c7a8af1b49b26e3377281c7089d77ff1761e799b05cd1961c3d3375ca69ceda`. All 30 files passed content, ownership, mode and SELinux xattr checks; 10 existing directory metadata records were preserved. Original desktop init and precompiled policy bytes remain unchanged. Source recovery and assembled base disk were not modified.
+
+This is an offline filesystem candidate, not a bootable image. Remaining gates: conflicting Qualcomm/Trusty/APEX HAL selection, second-stage fstab, matching module partitions/load lists, linker namespaces and enforcing policy permissions, then LP relocation and EFI kernel/initrd/DTB integration. Existing directory-label checks do not establish that service-domain permissions are sufficient. Do not install this candidate on an SD card yet.
