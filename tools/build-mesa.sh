@@ -22,7 +22,7 @@ export PKG_CONFIG_PATH="$ROOT/work/mesa/host-prefix/lib/pkgconfig${PKG_CONFIG_PA
 export PATH="/usr/lib/llvm-18/bin:$PATH"
 if [[ ! -f work/mesa/host/build.ninja ]]; then
   meson setup work/mesa/host work/mesa/mesa-26.2.4 --buildtype=release \
-    --force-fallback-for=libdrm,expat \
+    --force-fallback-for=libdrm,expat -Dallow-fallback-for=libdrm \
     -Dplatforms= -Dgallium-drivers=panfrost -Dvulkan-drivers= \
     -Dllvm=enabled -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
     -Dglx=disabled -Degl=disabled -Dgbm=enabled -Dgallium-va=disabled \
@@ -50,7 +50,7 @@ EOF
 mkdir -p work/mesa/pkgconfig
 if [[ ! -f work/mesa/build/build.ninja ]]; then
   meson setup work/mesa/build work/mesa/mesa-26.2.4 --cross-file work/mesa/android.cross \
-    --buildtype=release --force-fallback-for=libdrm,expat \
+    --buildtype=release --force-fallback-for=libdrm,expat -Dallow-fallback-for=libdrm \
     -Dplatforms=android -Dplatform-sdk-version=35 -Dandroid-stub=true \
     -Dgallium-drivers=panfrost -Dvulkan-drivers=panfrost \
     -Dmesa-clc=system -Dprecomp-compiler=system \
