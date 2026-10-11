@@ -31,7 +31,7 @@ def main():
         return r.stdout
     add('bin/hw/android.hardware.security.keymint-service',read(key,'/bin/hw/android.hardware.security.keymint-service.nonsecure'),'hal_keymint_default_exec',0o755)
     add('lib64/native_keymint/libcrypto.so',read(key,'/lib64/libcrypto.so'),'vendor_file')
-    add('bin/hw/android.hardware.gatekeeper-service.nonsecure',read(gate,'/bin/hw/android.hardware.gatekeeper-service.nonsecure'),'hal_gatekeeper_default_exec',0o755)
+    add('bin/hw/android.hardware.gatekeeper-service',read(gate,'/bin/hw/android.hardware.gatekeeper-service.nonsecure'),'hal_gatekeeper_default_exec',0o755)
     for n in ['keymint','secureclock','sharedsecret']:
         name='android.hardware.security.'+n+'-service.xml'
         add('etc/vintf/manifest/native-'+name,read(key,'/etc/vintf/'+name),'vendor_configs_file')
@@ -45,7 +45,7 @@ service vendor.keymint-default /vendor/bin/hw/android.hardware.security.keymint-
     setenv LD_LIBRARY_PATH /vendor/lib64/native_keymint:/vendor/lib64
 ''','vendor_configs_file')
     add('etc/init/android.hardware.gatekeeper-service.trusty.rc',b'''# Replacement for unavailable Trusty; software-only test service.
-service vendor.gatekeeper_default /vendor/bin/hw/android.hardware.gatekeeper-service.nonsecure
+service vendor.gatekeeper_default /vendor/bin/hw/android.hardware.gatekeeper-service
     class early_hal
     user system
     group system

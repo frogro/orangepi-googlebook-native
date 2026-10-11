@@ -1,0 +1,5 @@
+# Exact labels for added native libraries; existing HAL domains stay unchanged.
+/vendor/lib64/hw/vulkan\.panfrost\.so u:object_r:same_process_hal_file:s0
+/vendor/lib64/android\.hardware\.graphics\.allocator-V3-ndk\.so u:object_r:same_process_hal_file:s0
+/vendor/lib64/libminigbm_gralloc4_utils\.so u:object_r:same_process_hal_file:s0
+/vendor/lib64/drm_hwcomposer_atom_reporter\.so u:object_r:same_process_hal_file:s0
