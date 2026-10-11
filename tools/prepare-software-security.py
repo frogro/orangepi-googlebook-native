@@ -36,7 +36,8 @@ def main():
         name='android.hardware.security.'+n+'-service.xml'
         add('etc/vintf/manifest/native-'+name,read(key,'/etc/vintf/'+name),'vendor_configs_file')
     for name in ['android.hardware.gatekeeper-service.nonsecure.xml','android.hardware.security.sharedsecret-gatekeeper.xml']:
-        add('etc/vintf/manifest/native-'+name,read(gate,'/etc/vintf/'+name),'vendor_configs_file')
+        target='android.hardware.gatekeeper-service.trusty.xml' if name=='android.hardware.gatekeeper-service.nonsecure.xml' else 'native-'+name
+        add('etc/vintf/manifest/'+target,read(gate,'/etc/vintf/'+name),'vendor_configs_file')
     add('etc/init/native-software-keymint.rc',b'''# Software-only test service; not hardware-backed.
 service vendor.keymint-default /vendor/bin/hw/android.hardware.security.keymint-service
     class early_hal

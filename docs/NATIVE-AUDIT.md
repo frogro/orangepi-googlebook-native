@@ -69,3 +69,9 @@ Kernel run 38099283383 completed successfully. SHA256 checks, the ARM64 Image he
 ## Software security candidate
 
 `prepare-software-security.py` verifies the previously downloaded donor payload hashes and stages ten files: software KeyMint, software Gatekeeper, private KeyMint libcrypto, init entries and VINTF declarations. ELF architecture, direct dependencies and XML syntax are checked. The KeyMint donor declares version 5 and the matching SecureClock/SharedSecret services. Gatekeeper also has a SharedSecret declaration. These files are local candidates only, under `work/native-security-v1`; original Trusty/StrongBox registrations and APEX selections still need reconciliation, and vendor linker/SELinux checks must pass before import. Fresh-data encryption and SharedSecret negotiation have not been exercised. No device keys were read, copied or provisioned and no hardware-backed security or DRM certification is implied.
+
+## Direct dependency and declaration audit
+
+The 18 staged ELF files were compared with recovery vendor/system/system_ext library directories and the actual `com.android.runtime.apex` Bionic payload. All direct DT_NEEDED library names have candidate providers. This is only a filename inventory, not a transitive symbol or linker-namespace compatibility pass. The local result is `work/native-dependencies-v2.json`.
+
+A duplicate Gatekeeper registration was identified before vendor import: the stock Trusty XML already declares `IGatekeeper/default`. The security staging tool now replaces that exact XML pathname instead of adding a second declaration. Regenerated candidate: `work/native-security-v2`. Existing Trusty/StrongBox APEX selections and policy remain separate integration work.
