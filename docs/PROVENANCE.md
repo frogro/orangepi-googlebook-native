@@ -17,3 +17,7 @@ Native image gates:
 5. Test on a separate card, retaining the working Android card and its backup.
 
 A compiled kernel does not establish Android 17 compatibility, hardware-backed key provisioning, Google certification or working desktop graphics. No existing userdata is reused or formatted by these tools.
+
+## Build and inspection
+
+Run `bash tools/build-kernel.sh` on an ARM64 Linux builder. The manual GitHub workflow uses a separate ARM64 runner. Run `bash tools/local-inspect.sh` on Linux with Python 3, curl and lz4 to download, verify and inspect the recovery. All outputs stay next to this checkout. Inspection never writes block devices.
