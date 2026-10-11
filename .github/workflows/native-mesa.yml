@@ -22,6 +22,8 @@ jobs:
           work/env/bin/pip install meson==1.12.1 ninja==1.13.2 mako pyyaml packaging ply
           echo "$GITHUB_WORKSPACE/work/env/bin" >> "$GITHUB_PATH"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install pinned Android NDK
         run: |
           yes | sdkmanager 'ndk;28.2.13676358' >/dev/null || test -d "$ANDROID_HOME/ndk/28.2.13676358"
