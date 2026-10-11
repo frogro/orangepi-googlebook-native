@@ -31,6 +31,8 @@ fi
 ninja -j2 -C work/mesa/host src/compiler/clc/mesa_clc \
   src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
 export PATH="$ROOT/work/mesa/host/src/compiler/clc:$ROOT/work/mesa/host/src/compiler/spirv:$ROOT/work/mesa/host/src/panfrost/clc:$PATH"
+# Do not let host-only SPIRV/LLVM pkg-config files leak into ARM64 dependencies.
+unset PKG_CONFIG_PATH
 cat > work/mesa/android.cross <<EOF
 [binaries]
 c = '$BIN/aarch64-linux-android35-clang'
