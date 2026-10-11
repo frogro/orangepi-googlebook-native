@@ -27,7 +27,7 @@ src="$ROOT_DIR/cache/linux-vyos/linux-${pins[2]}"
 python3 "$ROOT_DIR/tools/patch-hdmi-audio-dependency.py" "$src"
 python3 "$LAB/tools/patch-rockchip-dma-mask.py" "$src"
 for patch_file in "$LAB"/patches/kernel/*.patch; do
-  if ! patch --batch --fuzz=0 -R --dry-run -p1 -d "$src" < "$patch_file" >/dev/null 2>&1; then
+  if ! patch --force --fuzz=0 -R --dry-run -p1 -d "$src" < "$patch_file" >/dev/null 2>&1; then
     patch --batch --fuzz=0 -p1 -d "$src" < "$patch_file"
   fi
 done
