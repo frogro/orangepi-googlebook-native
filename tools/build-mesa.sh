@@ -25,7 +25,7 @@ if [[ ! -f work/mesa/host/build.ninja ]]; then
     --force-fallback-for=libdrm,expat \
     -Dplatforms= -Dgallium-drivers=panfrost -Dvulkan-drivers= \
     -Dllvm=enabled -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
-    -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dgallium-va=disabled \
+    -Dglx=disabled -Degl=disabled -Dgbm=enabled -Dgallium-va=disabled \
     -Dgles1=disabled -Dgles2=disabled -Dopengl=false -Dvideo-codecs=
 fi
 ninja -j2 -C work/mesa/host src/compiler/clc/mesa_clc \
