@@ -1,0 +1,165 @@
+{
+  "source_build": "16373615",
+  "status": "Candidate userspace components; device execution not tested",
+  "files": [
+    {
+      "path": "graphics/extracted/android.hardware.graphics.allocator-V3-ndk.so",
+      "sha256": "0d12b24922141ca2e1f0314069ab60f7ca3436ba33cd82356c0591e4a4d13246",
+      "needed": [
+        "libbinder_ndk.so",
+        "android.hardware.graphics.common-V7-ndk.so",
+        "android.hardware.common-V2-ndk.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/extracted/android.hardware.graphics.allocator-service.minigbm",
+      "sha256": "7f394d7082735401e0a2cdc9fbcb010edef49a4d703366a9a73ef295eeb919da",
+      "needed": [
+        "libcutils.so",
+        "libdmabufheap.so",
+        "libdrm.so",
+        "libnativewindow.so",
+        "libsync.so",
+        "android.hardware.graphics.allocator-V3-ndk.so",
+        "android.hardware.graphics.mapper@4.0.so",
+        "libbase.so",
+        "libbinder_ndk.so",
+        "libgralloctypes.so",
+        "libhidlbase.so",
+        "liblog.so",
+        "libminigbm_gralloc.so",
+        "libminigbm_gralloc4_utils.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/extracted/android.hardware.graphics.common-V7-ndk.so",
+      "sha256": "6025247177940aca2ffd51309e7331d194fa1d0f705cfae2b8b1c2a27b5869c9",
+      "needed": [
+        "libbinder_ndk.so",
+        "android.hardware.common-V2-ndk.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/extracted/gralloc.default.so",
+      "sha256": "d9d16b7411bb706530c3dbe149f1857fdd55d2f0e1cd52bbb994c9fca0639ac5",
+      "needed": [
+        "liblog.so",
+        "libcutils.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/extracted/libminigbm_gralloc.so",
+      "sha256": "15285e460212d11cf08d56fe74ae64bbb649cfea48ef76738a4639d2282f522c",
+      "needed": [
+        "libcutils.so",
+        "libdmabufheap.so",
+        "libdrm.so",
+        "libgralloctypes.so",
+        "liblog.so",
+        "libnativewindow.so",
+        "libsync.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/extracted/libminigbm_gralloc4_utils.so",
+      "sha256": "deef25a285e720064f3bda6e3a46a6662f4c25a8facaadd017841a67ab33d98c",
+      "needed": [
+        "libcutils.so",
+        "libdmabufheap.so",
+        "libdrm.so",
+        "liblog.so",
+        "libnativewindow.so",
+        "libsync.so",
+        "android.hardware.graphics.mapper@4.0.so",
+        "libgralloctypes.so",
+        "libhidlbase.so",
+        "libminigbm_gralloc.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/extracted/mapper.minigbm.so",
+      "sha256": "cd6eabe5efaa957ef37c5cb9110522b61103be55af2868eb81e42ee00b2c6f79",
+      "needed": [
+        "libcutils.so",
+        "libdmabufheap.so",
+        "libdrm.so",
+        "liblog.so",
+        "libnativewindow.so",
+        "libsync.so",
+        "android.hardware.graphics.mapper@4.0.so",
+        "libgralloctypes.so",
+        "libhidlbase.so",
+        "libbase.so",
+        "libutils.so",
+        "android.hardware.graphics.allocator-V2-ndk.so",
+        "libminigbm_gralloc.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/cf-composer/android.hardware.composer.hwc3-service.drm",
+      "sha256": "9fb42a3222b42aae1df1d8e69932c667e0de979a4ce27e0ca9dd4a6dc203f129",
+      "needed": [
+        "drm_hwcomposer_atom_reporter.so",
+        "libcutils.so",
+        "libdrm.so",
+        "libhardware.so",
+        "libhidlbase.so",
+        "libsync.so",
+        "libui.so",
+        "android.hardware.graphics.composer3-V5-ndk.so",
+        "libbase.so",
+        "libbinder_ndk.so",
+        "liblog.so",
+        "libutils.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    },
+    {
+      "path": "graphics/cf-composer/drm_hwcomposer_atom_reporter.so",
+      "sha256": "f06cfd54f221e8933cc3d9614d0f5226b9bac51f5b6e40220f3d703778ffe1fa",
+      "needed": [
+        "libbase.so",
+        "libdrm.so",
+        "libhardware.so",
+        "liblog.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ]
+    }
+  ],
+  "rockchip_backend_symbol": true,
+  "composer_interface": "android.hardware.graphics.composer3-V5-ndk.so"
+}

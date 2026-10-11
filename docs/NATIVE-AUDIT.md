@@ -29,3 +29,9 @@ Old Googlebook system/vendor_dlkm modules are not compatible with the replacemen
 5. Generate and verify an independent test disk with a board-appropriate bootloader. No physical storage writes are part of this preparation.
 
 No boot, desktop, audio, DRM or hardware acceleration success has been established for this new image.
+
+## Donor inspection result
+
+Official Cuttlefish build 16373615 was downloaded and SHA256-verified; 36 reference files were extracted locally without mounts. None were installed or committed. The allocator is an Android37 ARM64 ELF and exports `backend_rockchip`. The generic DRM compositor links against `android.hardware.graphics.composer3-V5-ndk.so`, matching the Googlebook declaration. File hashes and direct ELF dependencies are recorded in donor-graphics-audit.json. This establishes concrete integration candidates, not buffer-sharing, linker-namespace, SELinux or runtime compatibility.
+
+The stock boot command line includes `binder.impl=rust` and Qualcomm pKVM protected modules; these must not be carried into the native boot config. The original userdata uses ext4 with file and metadata encryption. Retaining EROFS/F2FS support does not by itself implement the original Trusty/KeyMint security stack.
