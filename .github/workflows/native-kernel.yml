@@ -1,0 +1,28 @@
+name: Orange Pi 5 Plus native Googlebook kernel
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-kernel-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  kernel:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev python3 rsync kmod curl gnupg2 patch xz-utils zstd device-tree-compiler
+      - name: Build native kernel, DTB and matching signed modules
+        run: bash tools/build-kernel.sh
+      - name: Upload kernel bundle (not a complete OS image)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orangepi5-plus-googlebook-native-kernel-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,14 @@
+--- a/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dts
+@@ -468,3 +468,11 @@
+ &spdif_tx2 {
+ 	status = "okay";
+ };
++
++/* Existing Android firmware exposes OP-TEE through the SMC conduit. */
++&{/firmware} {
++	optee {
++		compatible = "linaro,optee-tz";
++		method = "smc";
++	};
++};
