@@ -1,0 +1,22 @@
+name: Native ARM64 EFI loader
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  efi:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM64 GRUB build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y grub-common grub-efi-arm64-bin
+      - name: Build and inspect EFI loader
+        run: bash tools/build-efi-loader.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orangepi5-plus-native-efi-${{ github.run_id }}
+          path: output/efi/
+          retention-days: 14
