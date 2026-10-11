@@ -1,0 +1,66 @@
+{
+  "run": 38102125837,
+  "status": "Checksums and ARM64 ELF verified; runtime and Android namespace resolution pending",
+  "libraries": {
+    "libGLESv2_mesa.so": {
+      "sha256": "fd0b4265dee7b39709f938ccc253bbfaf98658e90d48b22d8f64f787cfa49a02",
+      "needed": [
+        "libgallium_dri.so",
+        "libc.so"
+      ]
+    },
+    "libvulkan_panfrost.so": {
+      "sha256": "1998f5905651b1d6993d527ad06fa3f2c7b9b9a61cf66a8c5eff48f0f8322f10",
+      "needed": [
+        "libdrm.so",
+        "libhardware.so",
+        "liblog.so",
+        "libnativewindow.so",
+        "libsync.so",
+        "libm.so",
+        "libz.so",
+        "libdl.so",
+        "libc.so"
+      ]
+    },
+    "libGLESv1_CM_mesa.so": {
+      "sha256": "507ef7eae6ccfb998b1c666915813749cbf30fde45cb6cb39359eabf4d147829",
+      "needed": [
+        "libgallium_dri.so",
+        "libc.so"
+      ]
+    },
+    "libgallium_dri.so": {
+      "sha256": "7290b8c7755cf98869f6fee2636c67aa49c42fa2bf99fce2fcd68b927a7b6155",
+      "needed": [
+        "libdrm.so",
+        "liblog.so",
+        "libsync.so",
+        "libz.so",
+        "libm.so",
+        "libdl.so",
+        "libc.so"
+      ]
+    },
+    "libEGL_mesa.so": {
+      "sha256": "da327bffcac9aeb4a80cb723bd34a315ecbf9f8a8467f2a1a284a1944823fe14",
+      "needed": [
+        "libgallium_dri.so",
+        "libdrm.so",
+        "libhardware.so",
+        "liblog.so",
+        "libnativewindow.so",
+        "libsync.so",
+        "libm.so",
+        "libdl.so",
+        "libc.so"
+      ]
+    },
+    "libdrm.so": {
+      "sha256": "3a77e26d386acd32d11d0072b3273a0d2c1e76df29c8fbf6fe6dc8c9aa4574db",
+      "needed": [
+        "libc.so"
+      ]
+    }
+  }
+}
