@@ -143,3 +143,115 @@ Flash evidence and partition snapshot: `../work/sd-flash-20261011/status.json` (
 User reports the Orange Pi logo remains visible and Esc did not produce a setup menu. This does not locate the failure: firmware, input handling, boot selection and kernel display takeover remain possible. The card is currently absent from the host, so no device changes were made.
 
 Prepared `config/native-debug.cfg`: explicit GRUB-stage messages, visible 15-second menu, verbose kernel/early framebuffer console, no panic reboot, and `acpi=off` to make the intended native DT path explicit. The latter is a diagnostic compatibility change, not a confirmed root cause. `stage-native-boot.py --config` can install it after validating the prior ESP hash, without rebuilding kernel or Android. GRUB syntax and Python compilation checks pass. This configuration cannot help if the firmware never reaches GRUB; serial output or a firmware-only test may then be needed. Do not claim a fix yet.
+
+## Diagnostic ESP applied — 2026-10-11
+
+After the user reinserted the reader, the persistent SD ID, capacity and complete GPT layout matched the verified flash. Automatically mounted SD partitions were unmounted. The prior ESP was backed up and its hash matched the original. Only the 512 MiB ESP was updated with the prepared diagnostic configuration; full readback matched SHA256 `28ceec31c465f61cc8bee1aa805b50c4c03e2691ed362f1d1806b08152c1e441`, and the partition table remained unchanged. Evidence: `../work/sd-debug-20261011/applied.json`; backup: `esp-before.img`. Kernel, DTB and initramfs bytes are unchanged. The reader was safely powered off. Awaiting device boot observations; no boot fix or success is claimed.
+
+## Direct EFI probe — 2026-10-11
+
+The user reports only the Orange Pi logo after the diagnostic GRUB update. Card returned: GPT and FAT checks passed; complete diagnostic ESP SHA remained identical. Firmware bytes differ from the donor only in 16 blocks at 0x380000–0x38ffff, beginning with `DVKR`; origin remains unconfirmed, so these bytes were preserved.
+
+A minimal freestanding ARM64 PE/COFF EFI application now temporarily replaces only EFI/BOOT/BOOTAA64.EFI on the SD. It clears the text console, prints `GBNATIVE EFI TEST 20261011`, and waits indefinitely without starting GRUB or Android or writing storage. ARM64 machine, EFI subsystem, relocations and byte-for-byte SD readback checked. Original loader, source, probe and hashes: ../work/efi-probe-20261011. Restore BOOTAA64-original.EFI before normal boot testing. Device result pending. Reader left powered on; all SD partitions unmounted.
+
+## EFI probe result and loader restoration — 2026-10-12
+
+User reports only the Orange Pi logo again. Returned SD identity, complete GPT
+partition geometry and EFI probe file match the recorded state; FAT check passes.
+The exact probe successfully prints its banner under QEMU/AAVMF (log in
+../work/efi-return-20261012/qemu-probe.log). This validates the generic EFI
+application, not board firmware operation. The hardware failure is not yet
+localized: boot source/selection, firmware initialization or console remain
+candidates; no evidence establishes that GRUB or Linux ran.
+
+Restored the original GRUB loader after verifying its recorded SHA256, flushed
+and read back byte-for-byte. No kernel, Android partitions or firmware were
+changed. All SD partitions are unmounted. Per user instruction, never power off
+or eject the reader controller: unmount and flush only, leaving USB enumerated.
+
+Next hardware diagnostic: attempt Esc/F1 with a wired USB keyboard from power-on
+and observe the firmware progress bar and activity LED. If unavailable, obtain
+UART output before further kernel changes. Check for competing SPI/eMMC boot
+firmware without deleting or reflashing it blindly. The local EDK2 README warns
+that another U-Boot can take precedence. No boot fix is claimed.
+
+## Android12 early boot comparison and FIT repair — 2026-10-12
+
+User again reports logo only, no F1 response and no Ethernet LED. Treat the next
+boot stage as unconfirmed; an unlit Ethernet LED alone does not locate failure.
+The working Android12 backup has DDR V1.08 (20220617), SPL 2017.09
+gc060f28d70 (2022-04-18), and the U-Boot FIT partition at 8 MiB. The UEFI
+donor has SPL 2017.09 g5f53abfa1e (2022-12-26) and its FIT at 1 MiB.
+Both contain ATF/OP-TEE, but their FIT loadables and NV-data handling differ.
+Do not transplant the Android SPL or relocate UEFI FIT without handling these
+dependencies. A competing SPI/eMMC bootloader remains a hypothesis.
+
+The returned SD has a 64 KiB DVKR vendor-storage block at 0x380000, where the
+verified donor and original constructed image contain FF padding. This falls
+INSIDE the UEFI payload hashed by the FIT. With Rockchip's 512-byte external
+data alignment, payload begins at 0x100a00 and spans 0x500000 bytes. Donor
+SHA256 matches FIT c212e5a7a7230979cdbde339c113f7fe2227da57e9c282d369adc20151f45bcf;
+returned SD instead hashes b301c7dc3554fe5e7183f72a03cf644faeee09b41238cd2d790fea81c1983a58.
+Host dumpimage assumes different alignment for this FIT: its initial extracted
+hash was misleading and must not be used (corrected fit-checksums.json).
+
+After verifying physical identity, full GPT layout and donor hash, saved the
+first 32 MiB on Intenso and restored ONLY those 64 KiB from the pinned donor.
+Flush/readback verifies the entire donor region from 0x8000 through donor EOF,
+and the UEFI payload now matches the FIT checksum. No GPT, Android, EFI loader,
+SPI or eMMC changes. All SD partitions unmounted, controller kept powered.
+Evidence: ../work/bootchain-20261012/{fit-checksums.json,repair.json,sd-first32m.bin}.
+The creation time/source of the vendor block is not established. It may recur
+on boot; next test must check display progress and then re-read this region if
+still stuck. This is a proven byte-integrity repair, not confirmed boot success.
+
+## Repeated overwrite and missing SPL GPT entry — 2026-10-12
+
+After the repaired card was tested, the exact 64 KiB region at 0x380000 again
+contains DVKR vendor data. User confirms no eMMC or NVMe installed; SPI status
+remains unknown. Returned first32MiB and hash are saved in bootchain-20261012.
+Repeated repair alone is ineffective; writer/stage remains unproven.
+
+The donor GPT has a partition named uboot, sectors 2048..18431. Our assembler
+retained its FIT bytes but omitted this entry. The Rockchip next-dev SPL source
+(common/spl/spl_mmc.c, locally captured) supports name-based raw-partition load
+before raw-sector fallback; exact binary behavior remains hardware-unverified.
+Added preservation of this donor entry to assemble-native-base.py, with geometry
+and reserved-area bounds validation. Python compilation passes.
+
+On a sparse local disk, loaded the backed-up current GPT, added partition40
+uboot at 2048..18431 and verified GPT before applying the same entry to the SD.
+All original 39 entries remain byte-equivalent in sfdisk output (geometry, IDs,
+attributes); no OS partition moved. Restored the 64KiB FIT area again and verified
+the expected payload hash. GPT verification reports no problems aside from the
+pre-existing one-sector KERN-A alignment advisory. Reader remains powered.
+
+Evidence: before-uboot.gpt, gpt-test.img, with-uboot-partition.json. This is a
+new layout hypothesis test, not proof of boot success. The large integrated
+image has not been rebuilt; assembler fix applies to future assembly. Previous
+39-entry identity snapshots must not be used unmodified for subsequent SD writes.
+Next device observation should distinguish firmware menu/GRUB output from the
+same logo-only failure; on return, check for recurrent vendor overwrite first.
+
+## First Linux boot: missing dm-verity FEC — 2026-10-12
+
+Photo confirms Linux 6.18.54-opi5plus-googlebook-native running on Orange Pi 5
+Plus, SD detected, metadata EXT4 mounted and logical system_a created. It then
+reports verity: Invalid number of feature args, followed by PID1 termination
+and Attempted to kill init. do_group_exit is the consequence, not the origin.
+
+Stock vbmeta_a decoded by avbtool: system has FEC roots=2, offset 1069469696,
+size 8462336. Original kernel config enables DM_VERITY_FEC; our built artifact
+disables it. Linux dm-verity bounds its feature arguments by conditional FEC
+support, consistent with this exact failure. Also loop-control times out: our
+BLK_DEV_LOOP=m, original=y. These are independent early-init configuration gaps.
+
+config/native.config now enables DM_VERITY_FEC=y and BLK_DEV_LOOP=y (min16).
+check-native-config.py now requires both built-in. No AVB checks disabled and no
+partition data modified. A replacement kernel and its matching signed modules
+must be built and integrated before hardware validation. Existing kernel bundle
+remains the old broken configuration. A lightweight dependency check uses an
+isolated output directory with the available 6.18.55 source; it is not a full
+6.18.54 build or device proof.
+
+Validation: new guard rejects the original artifact for precisely FEC and loop; passes with both corrected. Isolated Kconfig resolves both plus Reed-Solomon built-in. Full native guard on the different CIX source cannot pass because that tree lacks Android DM_DEFAULT_KEY; no claim of a full native build check.

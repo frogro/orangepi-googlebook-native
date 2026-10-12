@@ -90,8 +90,8 @@ def assemble(recovery, firmware, target):
                 continue
             start, end = struct.unpack_from('<QQ', entries, pos + 32)
             struct.pack_into('<QQ', entries, pos + 32, start + shift_sectors, end + shift_sectors)
-        if not free:
-            raise ValueError('No free GPT entry for ESP')
+        if len(free) < 2:
+            raise ValueError('Two free GPT entries required for ESP and UEFI FIT')
         esp = plan['efi_system_partition']
         pos = free[0]
         entries[pos:pos + entry_size] = bytes(entry_size)
@@ -100,6 +100,19 @@ def assemble(recovery, firmware, target):
         struct.pack_into('<QQ', entries, pos + 32, esp['offset'] // 512,
                          (esp['offset'] + esp['bytes']) // 512 - 1)
         entries[pos + 56:pos + 62] = 'EFI'.encode('utf-16le')
+        # Rockchip SPL locates the FIT through the donor's named uboot entry.
+        # Retain its geometry/type, not the donor's disk-wide GPT headers.
+        boot_entry = firmware.read_bytes()[1024:1152]
+        boot_start, boot_end = struct.unpack_from('<QQ', boot_entry, 32)
+        boot_name = boot_entry[56:128].decode('utf-16le').rstrip('\0')
+        if boot_name != 'uboot' or (boot_start, boot_end) != (2048, 18431):
+            raise ValueError('Unexpected donor FIT partition')
+        if (boot_end + 1) * 512 > plan['reserved_boot_bytes']:
+            raise ValueError('FIT partition exceeds reserved boot area')
+        pos = free[1]
+        entries[pos:pos + entry_size] = bytes(entry_size)
+        entries[pos:pos + 128] = boot_entry
+        entries[pos + 16:pos + 32] = uuid.uuid4().bytes_le
         disk_size = plan['minimum_image_bytes']
         last_lba = disk_size // 512 - 1
         first_usable = 2 + table_sectors
