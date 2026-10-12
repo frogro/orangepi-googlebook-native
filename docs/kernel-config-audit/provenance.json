@@ -1,0 +1,6 @@
+{
+  "upstream_commit": "f2c26311c21cf60ea5bf9ac15c3242139e210689",
+  "upstream_dm_bow_sha256": "dee51fe50117daccdf4053d9121ade16cacc5aee92cb97b107b50c1a900dd3f7",
+  "original_config_sha256": "9ec0c9754b7ff0045eea4981a0386ad95ca267a799570eefbb6db2e9830f5969",
+  "tested_config_sha256": "b821bb74076025dad610266163361e93fd8ff04d221550bf769942eff92ac42e"
+}

@@ -28,3 +28,21 @@ cross-compilation passed for dm-default-key, BIO initialization, software crypto
 fallback, fscrypt inline integration, dm-table, blk-crypto and the TEE directory.
 The Plus DTB compiled and /firmware/optee reports linaro,optee-tz and smc.
 These checks do not replace encrypted-volume read/write and unlock tests.
+
+## 0003: Googlebook userdata block checkpoints (6.18.55)
+
+Source: Android common android16-6.12, pinned commit
+`f2c26311c21cf60ea5bf9ac15c3242139e210689`, drivers/md/dm-bow.c.
+https://android.googlesource.com/kernel/common/+/f2c26311c21cf60ea5bf9ac15c3242139e210689/drivers/md/dm-bow.c
+
+Preserves the original GPL notice and checkpoint implementation. Adapts
+prepare_ioctl to the 6.18 callback signature, preserving the device-size
+restriction used by the upstream linear target. File-local helpers and module
+entry points are static. Adds Kconfig/Makefile integration and requires
+CONFIG_DM_BOW=y in native validation. No userdata/metadata formatting or
+encryption flag changes are included. The Googlebook ext4 checkpoint=block
+requirement was observed failing in QEMU before the Keystore database panic.
+
+ARM64 object compilation and configuration checks are recorded in the config
+audit. Actual checkpoint create/commit/rollback and encrypted /data boot
+remain runtime tests; compilation alone does not certify update safety.
