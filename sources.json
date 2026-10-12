@@ -15,8 +15,8 @@
     "commit": "13b1c0924869c9c3e217a8fea93addd2f278a891"
   },
   "kernel": {
-    "version": "6.18.54",
-    "vyos_ref": "414b5ae6d9f568d218880b1a3c4293f7ef193df7",
+    "version": "6.18.55",
+    "vyos_ref": "f5a1e8334f772225d9e3ccdab45f6884cec28e59",
     "gpu": "panthor"
   },
   "android_reference": {
