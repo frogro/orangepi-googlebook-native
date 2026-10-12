@@ -8,12 +8,30 @@ p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--bundle',type=Path,required=True);p.add_argument('--initramfs',type=Path,required=True)
 p.add_argument('--disk',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
 p.add_argument('--timeout',type=int,default=180)
+p.add_argument('--diagnostic-skip-avb',action='store_true',help='QEMU-only: remove AVB fstab flags in the temporary initramfs; never a production fix')
 a=p.parse_args();a.bundle=a.bundle.resolve();a.disk=a.disk.resolve();a.initramfs=a.initramfs.resolve();a.output=a.output.resolve()
 for f in [a.disk,a.initramfs,a.bundle/'Image']:
  if not stat.S_ISREG(f.stat().st_mode):raise SystemExit('Regular files required')
 a.output.mkdir(parents=True,exist_ok=False)
 spec=importlib.util.spec_from_file_location('cpio',Path(__file__).with_name('prepare-native-initramfs.py'));cpio=importlib.util.module_from_spec(spec);spec.loader.exec_module(cpio)
 records=cpio.read_newc(gzip.decompress(a.initramfs.read_bytes()))
+avb_changes=[]
+if a.diagnostic_skip_avb:
+ for i,(name,fields,body) in enumerate(records):
+  if not name.startswith('first_stage_ramdisk/fstab.'):
+   continue
+  lines=[]
+  for line in body.decode().splitlines():
+   cols=line.split()
+   if len(cols)>=5 and not line.lstrip().startswith('#'):
+    flags=cols[4].split(',');removed=[x for x in flags if x=='avb' or x.startswith('avb=') or x.startswith('avb_keys=')]
+    if removed:
+     avb_changes.append({'file':name,'source':cols[0],'removed':removed})
+     cols[4]=','.join(x for x in flags if x not in removed);line=' '.join(cols)
+   lines.append(line)
+  records[i]=(name,fields,('\n'.join(lines)+'\n').encode())
+ if not avb_changes:raise SystemExit('No AVB flags found for diagnostic override')
+(a.output/'diagnostic-overrides.json').write_text(json.dumps(avb_changes,indent=2)+'\n')
 modules=[];release=(a.bundle/'kernel.release').read_text().strip()
 for name in ['virtio_mmio','virtio_scsi','sd_mod']:
  lines=subprocess.check_output(['modprobe','--show-depends','-d',str(a.bundle/'modules'),'-S',release,name],text=True).splitlines()
@@ -74,7 +92,10 @@ with (a.output/'console.log').open('wb') as log:
  rc=proc.returncode
 after=a.disk.stat();assert (before.st_size,before.st_mtime_ns)==(after.st_size,after.st_mtime_ns)
 s=(a.output/'console.log').read_text(errors='replace')
-report={'release':release,'returncode':rc,'timeout':timedout,'wrapper_started':'QEMU_SMOKE_WRAPPER_STARTED' in s,'virtio_ready':'QEMU_SMOKE_VIRTIO_READY' in s,'verity_arg_failure':'Invalid number of feature args' in s,'kernel_panic':'Kernel panic' in s,'system_logical_created':'Created logical partition system_a' in s,'second_stage_started':'init second stage started!' in s,'scope':'Real kernel and Android early init with virtual storage; no board firmware/DT/GPU validation','base_disk_metadata_unchanged':True}
+report={'diagnostic_skip_avb':a.diagnostic_skip_avb,'release':release,'returncode':rc,'timeout':timedout,'wrapper_started':'QEMU_SMOKE_WRAPPER_STARTED' in s,'virtio_ready':'QEMU_SMOKE_VIRTIO_READY' in s,'verity_arg_failure':'Invalid number of feature args' in s,'kernel_panic':'Kernel panic' in s,'system_logical_created':'Created logical partition system_a' in s,'second_stage_started':'init second stage started!' in s,'scope':'Real kernel and Android early init with virtual storage; no board firmware/DT/GPU validation','base_disk_metadata_unchanged':True}
+report['bootstrap_apexd_failed']='bootstrap-apexd-failed' in s
+report['guest_reboot']='reboot: Restarting system' in s
+report['cgroup_setup_failed']='createProcessGroup' in s and 'failed for service' in s
 (a.output/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 # A created device or a timeout alone is never a successful Android boot.
-raise SystemExit(1 if report['kernel_panic'] else (0 if report['second_stage_started'] else 2))
+raise SystemExit(1 if any(report[k] for k in ['kernel_panic','bootstrap_apexd_failed','guest_reboot','cgroup_setup_failed']) else (0 if report['second_stage_started'] else 2))

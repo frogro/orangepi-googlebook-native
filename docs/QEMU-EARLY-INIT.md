@@ -30,8 +30,8 @@ initramfs. No graphics device or network is provided. Two virtual CPUs and
 2 GiB RAM limit the test footprint; this is not an Android desktop benchmark.
 
 Outputs: console.log, report.json, exact command, test initramfs and disk overlay.
-Exit 1 means kernel panic; exit 2 means inconclusive/second stage not observed;
-exit 0 means Android second-stage init was observed without a subsequent panic
+Exit 1 means kernel panic, guest reboot or detected bootstrap/cgroup failure; exit 2 means inconclusive/second stage not observed;
+exit 0 means Android second-stage init was observed without a detected fatal failure
 in the time window. None of these establish desktop or physical board success.
 
 Scope: kernel execution, module loading, partition discovery, logical partitions,
@@ -48,3 +48,27 @@ Evidence: ../work/qemu-android-init-old-v4/{console.log,report.json}.
 The VM was stopped after the completed panic trace. The test correctly exits 1.
 Earlier harness iterations failed at virtual storage discovery; those are not
 FEC reproductions. New kernel bundles still need their comparison runs.
+
+## Explicit diagnostic override
+
+`--diagnostic-skip-avb` removes only AVB-related fstab flags in the temporary
+QEMU initramfs. Every removed flag is recorded in diagnostic-overrides.json;
+report.json labels this mode. The original initramfs, disk and physical SD are
+unchanged. Use only to look for subsequent boot errors while awaiting a fixed
+kernel. This mode cannot validate AVB or count as the normal regression pass.
+SELinux and userdata encryption flags remain unchanged. Default runs preserve
+AVB. Never install the diagnostic initramfs on the device.
+
+## Diagnostic result on 2026-10-12
+
+With the old 6.18.54 bundle and `--diagnostic-skip-avb`, Android reaches second
+stage init at 89.6 guest seconds. The next observed blocker is cgroup setup:
+`Unknown subsys name 'blkio'`, missing `/sys/fs/cgroup/system/uid_0`, then
+`createProcessGroup` fails for `apexd-bootstrap`. Android reboots with
+`bootloader,bootstrap-apexd-failed` at 127.6 guest seconds. The bundle has
+`CONFIG_BLK_CGROUP` disabled. This is a concrete configuration gap; it does not
+by itself prove the cause of every cgroup or ueventd failure. SELinux property
+permission denials also occur and need separate assessment. No desktop boot
+was achieved. Evidence: ../work/qemu-android-init-diagnostic-noavb-v1/console.log.
+The report classifier now treats this guest reboot as failure even though QEMU
+itself exits zero. The saved report was reclassified from the existing log.
