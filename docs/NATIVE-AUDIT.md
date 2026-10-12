@@ -255,3 +255,15 @@ isolated output directory with the available 6.18.55 source; it is not a full
 6.18.54 build or device proof.
 
 Validation: new guard rejects the original artifact for precisely FEC and loop; passes with both corrected. Isolated Kconfig resolves both plus Reed-Solomon built-in. Full native guard on the different CIX source cannot pass because that tree lacks Android DM_DEFAULT_KEY; no claim of a full native build check.
+
+## QEMU early-init regression test — 2026-10-12
+
+Added tools/qemu-android-init-smoke.py and docs/QEMU-EARLY-INIT.md. It boots the
+actual kernel and native initramfs using a small static module-loading wrapper,
+the bundle's signed VirtIO/SCSI/sd_mod drivers, a QEMU-generated DT and a private
+QCOW2 overlay of the real integrated system image. No SD or base-image writes.
+The original kernel reproduces both the loop-control timeout and the exact
+system_a verity argument error followed by PID1 panic seen on the board.
+Evidence: ../work/qemu-android-init-old-v4. Fixed 6.18.54 and 6.18.55 bundles
+must undergo this test before the next SD integration. Even second-stage init
+success is not a full desktop or RK3588 hardware validation.
