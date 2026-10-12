@@ -72,3 +72,16 @@ permission denials also occur and need separate assessment. No desktop boot
 was achieved. Evidence: ../work/qemu-android-init-diagnostic-noavb-v1/console.log.
 The report classifier now treats this guest reboot as failure even though QEMU
 itself exits zero. The saved report was reclassified from the existing log.
+
+## Consolidated cgroup kernel correction
+
+Read-only extraction from the integrated system confirms that cgroups.json
+requires v1 blkio, cpu and cpuset, plus cgroup v2 with optional memory. The old
+kernel lacks BLK_CGROUP and CPUSETS_V1. Both are now explicitly enabled and
+required by check-native-config.py, together with the existing scheduler and
+memory controller requirements. The original Googlebook kernel also enables
+both missing options. MEMCG_V1 is not added: this system config uses v2 memory.
+Evidence files are in ../work/cgroup-audit/. This corrects proven configuration
+gaps, but a new QEMU run with AVB enabled must establish whether apexd proceeds.
+SELinux property denials remain a separate userspace audit item; enforcement
+and security policy are unchanged.
