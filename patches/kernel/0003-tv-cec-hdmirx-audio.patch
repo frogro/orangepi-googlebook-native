@@ -1,0 +1,845 @@
+--- a/Documentation/devicetree/bindings/media/snps,dw-hdmi-rx.yaml
++++ b/Documentation/devicetree/bindings/media/snps,dw-hdmi-rx.yaml
+@@ -78,6 +78,13 @@
+       The phandle of the syscon node for the Video Output GRF register
+       to enable EDID transfer through SDAIN and SCLIN.
+ 
++  "#sound-dai-cells":
++    const: 1
++    description:
++      The HDMI RX controller registers a generic HDMI audio codec so the
++      audio embedded in the incoming stream can be captured. A value of 1
++      lets a sound card reference the audio DAI as <&hdmirx 0>.
++
+ required:
+   - compatible
+   - reg
+--- a/arch/arm64/configs/defconfig
++++ b/arch/arm64/configs/defconfig
+@@ -969,6 +969,7 @@
+ CONFIG_DRM_IMX8MP_DW_HDMI_BRIDGE=m
+ CONFIG_DRM_DW_HDMI_AHB_AUDIO=m
+ CONFIG_DRM_DW_HDMI_CEC=m
++CONFIG_DRM_DW_HDMI_QP_CEC=y
+ CONFIG_DRM_IMX_DCSS=m
+ CONFIG_DRM_V3D=m
+ CONFIG_DRM_VC4=m
+--- a/drivers/gpu/drm/bridge/synopsys/Kconfig
++++ b/drivers/gpu/drm/bridge/synopsys/Kconfig
+@@ -61,6 +61,14 @@
+ 	select DRM_KMS_HELPER
+ 	select REGMAP_MMIO
+ 
++config DRM_DW_HDMI_QP_CEC
++	bool "Synopsis Designware QP CEC interface"
++	depends on DRM_DW_HDMI_QP
++	select DRM_DISPLAY_HDMI_CEC_HELPER
++	help
++	  Support the CEC interface which is part of the Synopsys
++	  Designware HDMI QP block.
++
+ config DRM_DW_MIPI_DSI
+ 	tristate
+ 	select DRM_KMS_HELPER
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+@@ -18,6 +18,7 @@
+ 
+ #include <drm/bridge/dw_hdmi_qp.h>
+ #include <drm/display/drm_hdmi_helper.h>
++#include <drm/display/drm_hdmi_cec_helper.h>
+ #include <drm/display/drm_hdmi_state_helper.h>
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_helper.h>
+@@ -25,6 +26,8 @@
+ #include <drm/drm_connector.h>
+ #include <drm/drm_edid.h>
+ #include <drm/drm_modes.h>
++
++#include <media/cec.h>
+ 
+ #include <sound/hdmi-codec.h>
+ 
+@@ -131,17 +134,34 @@
+ 	bool			is_segment;
+ };
+ 
++#ifdef CONFIG_DRM_DW_HDMI_QP_CEC
++struct dw_hdmi_qp_cec {
++	struct drm_connector *connector;
++	int irq;
++	u32 addresses;
++	struct cec_msg rx_msg;
++	u8 tx_status;
++	bool tx_done;
++	bool rx_done;
++};
++#endif
++
+ struct dw_hdmi_qp {
+ 	struct drm_bridge bridge;
+ 
+ 	struct device *dev;
+ 	struct dw_hdmi_qp_i2c *i2c;
++
++#ifdef CONFIG_DRM_DW_HDMI_QP_CEC
++	struct dw_hdmi_qp_cec *cec;
++#endif
+ 
+ 	struct {
+ 		const struct dw_hdmi_qp_phy_ops *ops;
+ 		void *data;
+ 	} phy;
+ 
++	unsigned long ref_clk_rate;
+ 	struct regmap *regm;
+ 	int main_irq;
+ 
+@@ -966,6 +986,179 @@
+ 	}
+ }
+ 
++#ifdef CONFIG_DRM_DW_HDMI_QP_CEC
++static irqreturn_t dw_hdmi_qp_cec_hardirq(int irq, void *dev_id)
++{
++	struct dw_hdmi_qp *hdmi = dev_id;
++	struct dw_hdmi_qp_cec *cec = hdmi->cec;
++	irqreturn_t ret = IRQ_HANDLED;
++	u32 stat;
++
++	stat = dw_hdmi_qp_read(hdmi, CEC_INT_STATUS);
++	if (stat == 0)
++		return IRQ_NONE;
++
++	dw_hdmi_qp_write(hdmi, stat, CEC_INT_CLEAR);
++
++	if (stat & CEC_STAT_LINE_ERR) {
++		cec->tx_status = CEC_TX_STATUS_ERROR;
++		cec->tx_done = true;
++		ret = IRQ_WAKE_THREAD;
++	} else if (stat & CEC_STAT_DONE) {
++		cec->tx_status = CEC_TX_STATUS_OK;
++		cec->tx_done = true;
++		ret = IRQ_WAKE_THREAD;
++	} else if (stat & CEC_STAT_NACK) {
++		cec->tx_status = CEC_TX_STATUS_NACK;
++		cec->tx_done = true;
++		ret = IRQ_WAKE_THREAD;
++	}
++
++	if (stat & CEC_STAT_EOM) {
++		unsigned int len, i, val;
++
++		val = dw_hdmi_qp_read(hdmi, CEC_RX_COUNT_STATUS);
++		len = (val & 0xf) + 1;
++
++		if (len > sizeof(cec->rx_msg.msg))
++			len = sizeof(cec->rx_msg.msg);
++
++		for (i = 0; i < 4; i++) {
++			val = dw_hdmi_qp_read(hdmi, CEC_RX_DATA3_0 + i * 4);
++			cec->rx_msg.msg[i * 4] = val & 0xff;
++			cec->rx_msg.msg[i * 4 + 1] = (val >> 8) & 0xff;
++			cec->rx_msg.msg[i * 4 + 2] = (val >> 16) & 0xff;
++			cec->rx_msg.msg[i * 4 + 3] = (val >> 24) & 0xff;
++		}
++
++		dw_hdmi_qp_write(hdmi, 1, CEC_LOCK_CONTROL);
++
++		cec->rx_msg.len = len;
++		cec->rx_done = true;
++
++		ret = IRQ_WAKE_THREAD;
++	}
++
++	return ret;
++}
++
++static irqreturn_t dw_hdmi_qp_cec_thread(int irq, void *dev_id)
++{
++	struct dw_hdmi_qp *hdmi = dev_id;
++	struct dw_hdmi_qp_cec *cec = hdmi->cec;
++
++	if (cec->tx_done) {
++		cec->tx_done = false;
++		drm_connector_hdmi_cec_transmit_attempt_done(cec->connector,
++							     cec->tx_status);
++	}
++
++	if (cec->rx_done) {
++		cec->rx_done = false;
++		drm_connector_hdmi_cec_received_msg(cec->connector, &cec->rx_msg);
++	}
++
++	return IRQ_HANDLED;
++}
++
++static int dw_hdmi_qp_cec_init(struct drm_bridge *bridge,
++			       struct drm_connector *connector)
++{
++	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
++	struct dw_hdmi_qp_cec *cec = hdmi->cec;
++
++	cec->connector = connector;
++
++	dw_hdmi_qp_write(hdmi, 0, CEC_TX_COUNT);
++	dw_hdmi_qp_write(hdmi, ~0, CEC_INT_CLEAR);
++	dw_hdmi_qp_write(hdmi, 0, CEC_INT_MASK_N);
++
++	return devm_request_threaded_irq(hdmi->dev, cec->irq,
++					 dw_hdmi_qp_cec_hardirq,
++					 dw_hdmi_qp_cec_thread, IRQF_SHARED,
++					 dev_name(hdmi->dev), hdmi);
++}
++
++static int dw_hdmi_qp_cec_log_addr(struct drm_bridge *bridge, u8 logical_addr)
++{
++	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
++	struct dw_hdmi_qp_cec *cec = hdmi->cec;
++
++	if (logical_addr == CEC_LOG_ADDR_INVALID)
++		cec->addresses = 0;
++	else
++		cec->addresses |= BIT(logical_addr) | CEC_ADDR_BROADCAST;
++
++	dw_hdmi_qp_write(hdmi, cec->addresses, CEC_ADDR);
++
++	return 0;
++}
++
++static int dw_hdmi_qp_cec_enable(struct drm_bridge *bridge, bool enable)
++{
++	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
++	unsigned int irqs;
++	u32 swdisable;
++
++	if (!enable) {
++		dw_hdmi_qp_write(hdmi, 0, CEC_INT_MASK_N);
++		dw_hdmi_qp_write(hdmi, ~0, CEC_INT_CLEAR);
++
++		swdisable = dw_hdmi_qp_read(hdmi, GLOBAL_SWDISABLE);
++		swdisable = swdisable | CEC_SWDISABLE;
++		dw_hdmi_qp_write(hdmi, swdisable, GLOBAL_SWDISABLE);
++	} else {
++		swdisable = dw_hdmi_qp_read(hdmi, GLOBAL_SWDISABLE);
++		swdisable = swdisable & ~CEC_SWDISABLE;
++		dw_hdmi_qp_write(hdmi, swdisable, GLOBAL_SWDISABLE);
++
++		dw_hdmi_qp_write(hdmi, ~0, CEC_INT_CLEAR);
++		dw_hdmi_qp_write(hdmi, 1, CEC_LOCK_CONTROL);
++
++		dw_hdmi_qp_cec_log_addr(bridge, CEC_LOG_ADDR_INVALID);
++
++		irqs = CEC_STAT_LINE_ERR | CEC_STAT_NACK | CEC_STAT_EOM |
++		       CEC_STAT_DONE;
++		dw_hdmi_qp_write(hdmi, ~0, CEC_INT_CLEAR);
++		dw_hdmi_qp_write(hdmi, irqs, CEC_INT_MASK_N);
++	}
++
++	return 0;
++}
++
++static int dw_hdmi_qp_cec_transmit(struct drm_bridge *bridge, u8 attempts,
++				   u32 signal_free_time, struct cec_msg *msg)
++{
++	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
++	unsigned int i;
++	u32 val;
++
++	for (i = 0; i < msg->len; i++) {
++		if (!(i % 4))
++			val = msg->msg[i];
++		if ((i % 4) == 1)
++			val |= msg->msg[i] << 8;
++		if ((i % 4) == 2)
++			val |= msg->msg[i] << 16;
++		if ((i % 4) == 3)
++			val |= msg->msg[i] << 24;
++
++		if (i == (msg->len - 1) || (i % 4) == 3)
++			dw_hdmi_qp_write(hdmi, val, CEC_TX_DATA3_0 + (i / 4) * 4);
++	}
++
++	dw_hdmi_qp_write(hdmi, msg->len - 1, CEC_TX_COUNT);
++	dw_hdmi_qp_write(hdmi, CEC_CTRL_START, CEC_TX_CONTROL);
++
++	return 0;
++}
++#else
++#define dw_hdmi_qp_cec_init NULL
++#define dw_hdmi_qp_cec_enable NULL
++#define dw_hdmi_qp_cec_log_addr NULL
++#define dw_hdmi_qp_cec_transmit NULL
++#endif /* CONFIG_DRM_DW_HDMI_QP_CEC */
++
+ static const struct drm_bridge_funcs dw_hdmi_qp_bridge_funcs = {
+ 	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
+ 	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
+@@ -980,6 +1173,10 @@
+ 	.hdmi_audio_startup = dw_hdmi_qp_audio_enable,
+ 	.hdmi_audio_shutdown = dw_hdmi_qp_audio_disable,
+ 	.hdmi_audio_prepare = dw_hdmi_qp_audio_prepare,
++	.hdmi_cec_init = dw_hdmi_qp_cec_init,
++	.hdmi_cec_enable = dw_hdmi_qp_cec_enable,
++	.hdmi_cec_log_addr = dw_hdmi_qp_cec_log_addr,
++	.hdmi_cec_transmit = dw_hdmi_qp_cec_transmit,
+ };
+ 
+ static irqreturn_t dw_hdmi_qp_main_hardirq(int irq, void *dev_id)
+@@ -1015,13 +1212,11 @@
+ {
+ 	dw_hdmi_qp_write(hdmi, 0, MAINUNIT_0_INT_MASK_N);
+ 	dw_hdmi_qp_write(hdmi, 0, MAINUNIT_1_INT_MASK_N);
+-	dw_hdmi_qp_write(hdmi, 428571429, TIMER_BASE_CONFIG0);
++	dw_hdmi_qp_write(hdmi, hdmi->ref_clk_rate, TIMER_BASE_CONFIG0);
+ 
+ 	/* Software reset */
+ 	dw_hdmi_qp_write(hdmi, 0x01, I2CM_CONTROL0);
+-
+ 	dw_hdmi_qp_write(hdmi, 0x085c085c, I2CM_FM_SCL_CONFIG0);
+-
+ 	dw_hdmi_qp_mod(hdmi, 0, I2CM_FM_EN, I2CM_INTERFACE_CONTROL0);
+ 
+ 	/* Clear DONE and ERROR interrupts */
+@@ -1066,6 +1261,13 @@
+ 
+ 	hdmi->phy.ops = plat_data->phy_ops;
+ 	hdmi->phy.data = plat_data->phy_data;
++
++	if (plat_data->ref_clk_rate) {
++		hdmi->ref_clk_rate = plat_data->ref_clk_rate;
++	} else {
++		hdmi->ref_clk_rate = 428571429;
++		dev_warn(dev, "Set ref_clk_rate to vendor default\n");
++	}
+ 
+ 	dw_hdmi_qp_init_hw(hdmi);
+ 
+@@ -1095,6 +1297,22 @@
+ 	hdmi->bridge.hdmi_audio_dev = dev;
+ 	hdmi->bridge.hdmi_audio_dai_port = 1;
+ 
++#ifdef CONFIG_DRM_DW_HDMI_QP_CEC
++	if (plat_data->cec_irq) {
++		hdmi->bridge.ops |= DRM_BRIDGE_OP_HDMI_CEC_ADAPTER;
++		hdmi->bridge.hdmi_cec_dev = dev;
++		hdmi->bridge.hdmi_cec_adapter_name = dev_name(dev);
++
++		hdmi->cec = devm_kzalloc(hdmi->dev, sizeof(*hdmi->cec), GFP_KERNEL);
++		if (!hdmi->cec)
++			return ERR_PTR(-ENOMEM);
++
++		hdmi->cec->irq = plat_data->cec_irq;
++	} else {
++		dev_warn(dev, "Disabled CEC support due to missing IRQ\n");
++	}
++#endif
++
+ 	ret = devm_drm_bridge_add(dev, &hdmi->bridge);
+ 	if (ret)
+ 		return ERR_PTR(ret);
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.h
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.h
+@@ -488,9 +488,23 @@
+ #define AUDPKT_VBIT_OVR0				0xf24
+ /* CEC Registers */
+ #define CEC_TX_CONTROL					0x1000
++#define CEC_CTRL_CLEAR					BIT(0)
++#define CEC_CTRL_START					BIT(0)
+ #define CEC_STATUS					0x1004
++#define CEC_STAT_DONE					BIT(0)
++#define CEC_STAT_NACK					BIT(1)
++#define CEC_STAT_ARBLOST				BIT(2)
++#define CEC_STAT_LINE_ERR				BIT(3)
++#define CEC_STAT_RETRANS_FAIL				BIT(4)
++#define CEC_STAT_DISCARD				BIT(5)
++#define CEC_STAT_TX_BUSY				BIT(8)
++#define CEC_STAT_RX_BUSY				BIT(9)
++#define CEC_STAT_DRIVE_ERR				BIT(10)
++#define CEC_STAT_EOM					BIT(11)
++#define CEC_STAT_NOTIFY_ERR				BIT(12)
+ #define CEC_CONFIG					0x1008
+ #define CEC_ADDR					0x100c
++#define CEC_ADDR_BROADCAST				BIT(15)
+ #define CEC_TX_COUNT					0x1020
+ #define CEC_TX_DATA3_0					0x1024
+ #define CEC_TX_DATA7_4					0x1028
+--- a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+@@ -424,14 +424,15 @@
+ 				    void *data)
+ {
+ 	struct platform_device *pdev = to_platform_device(dev);
++	struct dw_hdmi_qp_plat_data plat_data = {};
+ 	const struct rockchip_hdmi_qp_cfg *cfg;
+-	struct dw_hdmi_qp_plat_data plat_data;
+ 	struct drm_device *drm = data;
+ 	struct drm_connector *connector;
+ 	struct drm_encoder *encoder;
+ 	struct rockchip_hdmi_qp *hdmi;
+ 	struct resource *res;
+ 	struct clk_bulk_data *clks;
++	struct clk *ref_clk;
+ 	int ret, irq, i;
+ 
+ 	if (!pdev->dev.of_node)
+@@ -450,10 +451,8 @@
+ 		return -ENODEV;
+ 
+ 	if (!cfg->ctrl_ops || !cfg->ctrl_ops->io_init ||
+-	    !cfg->ctrl_ops->irq_callback || !cfg->ctrl_ops->hardirq_callback) {
+-		dev_err(dev, "Missing platform ctrl ops\n");
+-		return -ENODEV;
+-	}
++	    !cfg->ctrl_ops->irq_callback || !cfg->ctrl_ops->hardirq_callback)
++		return dev_err_probe(dev, -ENODEV, "Missing platform ctrl ops\n");
+ 
+ 	hdmi->ctrl_ops = cfg->ctrl_ops;
+ 	hdmi->dev = &pdev->dev;
+@@ -466,10 +465,9 @@
+ 			break;
+ 		}
+ 	}
+-	if (hdmi->port_id < 0) {
+-		dev_err(hdmi->dev, "Failed to match HDMI port ID\n");
+-		return hdmi->port_id;
+-	}
++	if (hdmi->port_id < 0)
++		return dev_err_probe(hdmi->dev, hdmi->port_id,
++				     "Failed to match HDMI port ID\n");
+ 
+ 	plat_data.phy_ops = cfg->phy_ops;
+ 	plat_data.phy_data = hdmi;
+@@ -490,39 +488,38 @@
+ 
+ 	hdmi->regmap = syscon_regmap_lookup_by_phandle(dev->of_node,
+ 						       "rockchip,grf");
+-	if (IS_ERR(hdmi->regmap)) {
+-		dev_err(hdmi->dev, "Unable to get rockchip,grf\n");
+-		return PTR_ERR(hdmi->regmap);
+-	}
++	if (IS_ERR(hdmi->regmap))
++		return dev_err_probe(hdmi->dev, PTR_ERR(hdmi->regmap),
++				     "Unable to get rockchip,grf\n");
+ 
+ 	hdmi->vo_regmap = syscon_regmap_lookup_by_phandle(dev->of_node,
+ 							  "rockchip,vo-grf");
+-	if (IS_ERR(hdmi->vo_regmap)) {
+-		dev_err(hdmi->dev, "Unable to get rockchip,vo-grf\n");
+-		return PTR_ERR(hdmi->vo_regmap);
+-	}
++	if (IS_ERR(hdmi->vo_regmap))
++		return dev_err_probe(hdmi->dev, PTR_ERR(hdmi->vo_regmap),
++				     "Unable to get rockchip,vo-grf\n");
+ 
+ 	ret = devm_clk_bulk_get_all_enabled(hdmi->dev, &clks);
+-	if (ret < 0) {
+-		dev_err(hdmi->dev, "Failed to get clocks: %d\n", ret);
+-		return ret;
+-	}
++	if (ret < 0)
++		return dev_err_probe(hdmi->dev, ret, "Failed to get clocks\n");
++
++	ref_clk = clk_get(hdmi->dev, "ref");
++	if (IS_ERR(ref_clk))
++		return dev_err_probe(hdmi->dev, PTR_ERR(ref_clk),
++				     "Failed to get ref clock\n");
++
++	plat_data.ref_clk_rate = clk_get_rate(ref_clk);
++	clk_put(ref_clk);
+ 
+ 	hdmi->enable_gpio = devm_gpiod_get_optional(hdmi->dev, "enable",
+ 						    GPIOD_OUT_HIGH);
+-	if (IS_ERR(hdmi->enable_gpio)) {
+-		ret = PTR_ERR(hdmi->enable_gpio);
+-		dev_err(hdmi->dev, "Failed to request enable GPIO: %d\n", ret);
+-		return ret;
+-	}
++	if (IS_ERR(hdmi->enable_gpio))
++		return dev_err_probe(hdmi->dev, PTR_ERR(hdmi->enable_gpio),
++				     "Failed to request enable GPIO\n");
+ 
+ 	hdmi->phy = devm_of_phy_get_by_index(dev, dev->of_node, 0);
+-	if (IS_ERR(hdmi->phy)) {
+-		ret = PTR_ERR(hdmi->phy);
+-		if (ret != -EPROBE_DEFER)
+-			dev_err(hdmi->dev, "failed to get phy: %d\n", ret);
+-		return ret;
+-	}
++	if (IS_ERR(hdmi->phy))
++		return dev_err_probe(hdmi->dev, PTR_ERR(hdmi->phy),
++				     "Failed to get phy\n");
+ 
+ 	cfg->ctrl_ops->io_init(hdmi);
+ 
+@@ -531,6 +528,10 @@
+ 	plat_data.main_irq = platform_get_irq_byname(pdev, "main");
+ 	if (plat_data.main_irq < 0)
+ 		return plat_data.main_irq;
++
++	plat_data.cec_irq = platform_get_irq_byname(pdev, "cec");
++	if (plat_data.cec_irq < 0)
++		return plat_data.cec_irq;
+ 
+ 	irq = platform_get_irq_byname(pdev, "hpd");
+ 	if (irq < 0)
+@@ -551,17 +552,15 @@
+ 
+ 	hdmi->hdmi = dw_hdmi_qp_bind(pdev, encoder, &plat_data);
+ 	if (IS_ERR(hdmi->hdmi)) {
+-		ret = PTR_ERR(hdmi->hdmi);
+ 		drm_encoder_cleanup(encoder);
+-		return ret;
++		return dev_err_probe(hdmi->dev, PTR_ERR(hdmi->hdmi),
++				     "Failed to bind dw-hdmi-qp");
+ 	}
+ 
+ 	connector = drm_bridge_connector_init(drm, encoder);
+-	if (IS_ERR(connector)) {
+-		ret = PTR_ERR(connector);
+-		dev_err(hdmi->dev, "failed to init bridge connector: %d\n", ret);
+-		return ret;
+-	}
++	if (IS_ERR(connector))
++		return dev_err_probe(hdmi->dev, PTR_ERR(connector),
++				     "Failed to init bridge connector\n");
+ 
+ 	return drm_connector_attach_encoder(connector, encoder);
+ }
+--- a/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
++++ b/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
+@@ -41,6 +41,8 @@
+ #include <media/videobuf2-dma-contig.h>
+ #include <media/videobuf2-v4l2.h>
+ 
++#include <sound/hdmi-codec.h>
++
+ #include "snps_hdmirx.h"
+ #include "snps_hdmirx_cec.h"
+ 
+@@ -132,6 +134,12 @@
+ 	struct delayed_work delayed_work_hotplug;
+ 	struct delayed_work delayed_work_res_change;
+ 	struct hdmirx_cec *cec;
++	struct platform_device *audio_pdev;
++	struct delayed_work audio_work;
++	u32 audio_clkrate;
++	u32 audio_fs;
++	int audio_pre_state;
++	bool audio_streaming;
+ 	struct mutex stream_lock; /* to lock video stream capture */
+ 	struct mutex work_lock; /* to lock the critical section of hotplug event */
+ 	struct reset_control_bulk_data resets[HDMIRX_NUM_RST];
+@@ -2569,6 +2577,233 @@
+ 	return 0;
+ }
+ 
++#define HDMIRX_AUDIO_INIT_FIFO_STATE	128
++#define HDMIRX_AUDIO_INIT_STATE		(HDMIRX_AUDIO_INIT_FIFO_STATE * 4)
++
++static const int hdmirx_supported_fs[] = {
++	32000, 44100, 48000, 88200, 96000, 176400, 192000, 768000, -1
++};
++
++static int hdmirx_audio_closest_fs(int fs)
++{
++	int i = 0, fs_t = hdmirx_supported_fs[0];
++
++	while (fs_t > 0) {
++		if (abs(fs - fs_t) <= 2000)
++			return fs_t;
++		fs_t = hdmirx_supported_fs[++i];
++	}
++	return 0;
++}
++
++/* Recover the incoming audio sample rate from the ACR N/CTS + TMDS clock. */
++static u32 hdmirx_audio_fs(struct snps_hdmirx_dev *hdmirx_dev)
++{
++	u64 tmds_clk, fs_audio = 0;
++	u32 acr_cts, acr_n, tmdsqpclk_freq;
++	u32 acr_pb7_4, acr_pb3_0;
++
++	tmdsqpclk_freq = hdmirx_readl(hdmirx_dev, CMU_TMDSQPCLK_FREQ);
++	hdmirx_readl(hdmirx_dev, PKTDEC_ACR_PH2_1);
++	acr_pb7_4 = hdmirx_readl(hdmirx_dev, PKTDEC_ACR_PB3_0);
++	acr_pb3_0 = hdmirx_readl(hdmirx_dev, PKTDEC_ACR_PB7_4);
++	acr_cts = __be32_to_cpu(acr_pb7_4) & 0xfffff;
++	acr_n = (__be32_to_cpu(acr_pb3_0) & 0x0fffff00) >> 8;
++	tmds_clk = tmdsqpclk_freq * 4 * 1000U;
++	if (acr_cts != 0) {
++		fs_audio = div_u64((tmds_clk * acr_n), acr_cts);
++		fs_audio /= 128;
++		fs_audio = hdmirx_audio_closest_fs(fs_audio);
++	}
++	return (u32)fs_audio;
++}
++
++/* Nudge the audio reference clock by +/- ppm to keep the FIFO balanced. */
++static void hdmirx_audio_clk_ppm_inc(struct snps_hdmirx_dev *hdmirx_dev, int ppm)
++{
++	int delta, inc;
++	long rate = hdmirx_dev->audio_clkrate;
++
++	if (ppm < 0) {
++		ppm = -ppm;
++		inc = -1;
++	} else {
++		inc = 1;
++	}
++	delta = (int)div64_u64((u64)rate * ppm + 500000, 1000000);
++	delta *= inc;
++	rate = hdmirx_dev->audio_clkrate + delta;
++	clk_set_rate(hdmirx_dev->clks[1].clk, rate);
++	hdmirx_dev->audio_clkrate = rate;
++}
++
++static int hdmirx_audio_clk_adjust(struct snps_hdmirx_dev *hdmirx_dev,
++				   int total_offset, int single_offset)
++{
++	int schedule_time = 500;
++	int ppm = 10;
++	u32 offset_abs = abs(total_offset);
++
++	if (offset_abs > 200) {
++		ppm += 200;
++		schedule_time -= 100;
++	}
++	if (offset_abs > 100) {
++		ppm += 200;
++		schedule_time -= 100;
++	}
++	if (offset_abs > 32) {
++		ppm += 20;
++		schedule_time -= 100;
++	}
++	if (offset_abs > 16)
++		ppm += 20;
++	if (total_offset > 16 && single_offset > 0)
++		hdmirx_audio_clk_ppm_inc(hdmirx_dev, ppm);
++	else if (total_offset < -16 && single_offset < 0)
++		hdmirx_audio_clk_ppm_inc(hdmirx_dev, -ppm);
++	return schedule_time;
++}
++
++static void hdmirx_audio_fifo_reinit(struct snps_hdmirx_dev *hdmirx_dev)
++{
++	hdmirx_writel(hdmirx_dev, AUDIO_FIFO_CONTROL, 1);
++	usleep_range(200, 210);
++	hdmirx_writel(hdmirx_dev, AUDIO_FIFO_CONTROL, 0);
++}
++
++/*
++ * Periodic worker that locks the local audio clock to the source by keeping
++ * the audio FIFO fill level close to its target, avoiding under/overflow.
++ */
++static void hdmirx_audio_work(struct work_struct *work)
++{
++	struct snps_hdmirx_dev *hdmirx_dev =
++		container_of(to_delayed_work(work), struct snps_hdmirx_dev, audio_work);
++	unsigned long delay = 200;
++	int cur, total, single;
++	u32 fifo, fs;
++
++	fs = hdmirx_audio_fs(hdmirx_dev);
++	fifo = hdmirx_readl(hdmirx_dev, AUDIO_FIFO_STATUS2);
++
++	if (fifo & (AFIFO_UNDERFLOW_ST | AFIFO_OVERFLOW_ST)) {
++		if (fs) {
++			clk_set_rate(hdmirx_dev->clks[1].clk, fs * 128);
++			hdmirx_dev->audio_clkrate = fs * 128;
++			hdmirx_dev->audio_fs = fs;
++		}
++		hdmirx_audio_fifo_reinit(hdmirx_dev);
++		hdmirx_dev->audio_pre_state = 0;
++		goto out;
++	}
++
++	cur = fifo & 0xffff;
++	total = cur - HDMIRX_AUDIO_INIT_STATE;
++	single = cur - hdmirx_dev->audio_pre_state;
++
++	if (fs && abs((int)fs - (int)hdmirx_dev->audio_fs) > 1000) {
++		clk_set_rate(hdmirx_dev->clks[1].clk, fs * 128);
++		hdmirx_dev->audio_clkrate = fs * 128;
++		hdmirx_dev->audio_fs = fs;
++		hdmirx_audio_fifo_reinit(hdmirx_dev);
++		hdmirx_dev->audio_pre_state = 0;
++		goto out;
++	}
++
++	if (cur != 0)
++		delay = hdmirx_audio_clk_adjust(hdmirx_dev, total, single);
++	hdmirx_dev->audio_pre_state = cur;
++out:
++	/* Only re-arm while streaming; avoids a self-reschedule race with
++	 * cancel_delayed_work_sync() in audio_shutdown().
++	 */
++	if (READ_ONCE(hdmirx_dev->audio_streaming))
++		schedule_delayed_work(&hdmirx_dev->audio_work,
++				      msecs_to_jiffies(delay));
++}
++
++static int hdmirx_audio_hw_params(struct device *dev, void *data,
++				  struct hdmi_codec_daifmt *fmt,
++				  struct hdmi_codec_params *hparms)
++{
++	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
++	u32 fs;
++
++	fs = hdmirx_audio_fs(hdmirx_dev);
++	if (!fs)
++		fs = hparms ? hparms->sample_rate : 48000;
++	if (!fs)
++		fs = 48000;
++
++	hdmirx_dev->audio_fs = fs;
++	hdmirx_dev->audio_clkrate = fs * 128;
++	clk_set_rate(hdmirx_dev->clks[1].clk, fs * 128);
++
++	hdmirx_audio_fifo_reinit(hdmirx_dev);
++	hdmirx_writel(hdmirx_dev, AUDIO_FIFO_THR_PASS, HDMIRX_AUDIO_INIT_FIFO_STATE);
++	hdmirx_writel(hdmirx_dev, AUDIO_FIFO_THR,
++		      AFIFO_THR_LOW_QST(0x20) | AFIFO_THR_HIGH_QST(0x160));
++	hdmirx_writel(hdmirx_dev, AUDIO_FIFO_MUTE_THR,
++		      AFIFO_THR_MUTE_LOW_QST(0x8) | AFIFO_THR_MUTE_HIGH_QST(0x178));
++
++	hdmirx_update_bits(hdmirx_dev, AUDIO_PROC_CONFIG0, I2S_EN, I2S_EN);
++	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, AUDIO_ENABLE);
++
++	hdmirx_dev->audio_pre_state = 0;
++	WRITE_ONCE(hdmirx_dev->audio_streaming, true);
++	mod_delayed_work(system_unbound_wq, &hdmirx_dev->audio_work,
++			 msecs_to_jiffies(200));
++
++	dev_dbg(dev, "audio hw_params: fs=%u\n", fs);
++	return 0;
++}
++
++static void hdmirx_audio_shutdown(struct device *dev, void *data)
++{
++	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
++
++	WRITE_ONCE(hdmirx_dev->audio_streaming, false);
++	cancel_delayed_work_sync(&hdmirx_dev->audio_work);
++	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, 0);
++}
++
++static int hdmirx_audio_get_dai_id(struct snd_soc_component *component,
++				   struct device_node *endpoint,
++				   void *data)
++{
++	return 0;
++}
++
++static const struct hdmi_codec_ops hdmirx_audio_codec_ops = {
++	.hw_params = hdmirx_audio_hw_params,
++	.audio_shutdown = hdmirx_audio_shutdown,
++	.get_dai_id = hdmirx_audio_get_dai_id,
++};
++
++static int hdmirx_register_audio_device(struct snps_hdmirx_dev *hdmirx_dev)
++{
++	struct hdmi_codec_pdata codec_data = {
++		.ops = &hdmirx_audio_codec_ops,
++		.i2s = 1,
++		.no_i2s_playback = 1,
++		.max_i2s_channels = 8,
++		.data = hdmirx_dev,
++	};
++	struct platform_device_info pdevinfo = {
++		.parent = hdmirx_dev->dev,
++		.id = PLATFORM_DEVID_AUTO,
++		.name = HDMI_CODEC_DRV_NAME,
++		.data = &codec_data,
++		.size_data = sizeof(codec_data),
++		.dma_mask = DMA_BIT_MASK(32),
++	};
++
++	hdmirx_dev->audio_pdev = platform_device_register_full(&pdevinfo);
++
++	return PTR_ERR_OR_ZERO(hdmirx_dev->audio_pdev);
++}
++
+ static int hdmirx_probe(struct platform_device *pdev)
+ {
+ 	struct snps_hdmirx_dev *hdmirx_dev;
+@@ -2618,6 +2853,7 @@
+ 			  hdmirx_delayed_work_hotplug);
+ 	INIT_DELAYED_WORK(&hdmirx_dev->delayed_work_res_change,
+ 			  hdmirx_delayed_work_res_change);
++	INIT_DELAYED_WORK(&hdmirx_dev->audio_work, hdmirx_audio_work);
+ 
+ 	hdmirx_dev->cur_fmt_fourcc = V4L2_PIX_FMT_BGR24;
+ 	hdmirx_dev->timings = cea640x480;
+@@ -2682,6 +2918,10 @@
+ 	hdmirx_dev->infoframes = v4l2_debugfs_if_alloc(hdmirx_dev->debugfs_dir,
+ 						       V4L2_DEBUGFS_IF_AVI, hdmirx_dev,
+ 						       hdmirx_debugfs_if_read);
++
++	ret = hdmirx_register_audio_device(hdmirx_dev);
++	if (ret)
++		dev_warn(dev, "failed to register HDMI audio codec: %d\n", ret);
+ 
+ 	return 0;
+ 
+@@ -2702,6 +2942,10 @@
+ 	struct device *dev = &pdev->dev;
+ 	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
+ 
++	cancel_delayed_work_sync(&hdmirx_dev->audio_work);
++	if (!IS_ERR_OR_NULL(hdmirx_dev->audio_pdev))
++		platform_device_unregister(hdmirx_dev->audio_pdev);
++
+ 	v4l2_debugfs_if_free(hdmirx_dev->infoframes);
+ 	debugfs_remove_recursive(hdmirx_dev->debugfs_dir);
+ 
+--- a/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.h
++++ b/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.h
+@@ -81,6 +81,7 @@
+ #define DATAPATH_ENABLE				BIT(12)
+ #define PKTFIFO_ENABLE				BIT(11)
+ #define AVPUNIT_ENABLE				BIT(8)
++#define AUDIO_ENABLE				BIT(9)
+ #define MAIN_ENABLE				BIT(0)
+ #define GLOBAL_TIMER_REF_BASE			0x0028
+ #define CORE_CONFIG				0x0050
+@@ -175,20 +176,27 @@
+ #define VPROC_FMT_OVR_VALUE(x)			UPDATE(x, 6, 4)
+ #define VPROC_FMT_OVR_EN			BIT(0)
+ 
++#define AUDIO_FIFO_CONFIG			0x0460
+ #define AFIFO_FILL_RESTART			BIT(0)
++#define AUDIO_FIFO_CONTROL			0x0464
+ #define AFIFO_INIT_P				BIT(0)
++#define AUDIO_FIFO_THR_PASS			0x0468
++#define AUDIO_FIFO_THR				0x046c
+ #define AFIFO_THR_LOW_QST_MASK			GENMASK(25, 16)
+ #define AFIFO_THR_LOW_QST(x)			UPDATE(x, 25, 16)
+ #define AFIFO_THR_HIGH_QST_MASK			GENMASK(9, 0)
+ #define AFIFO_THR_HIGH_QST(x)			UPDATE(x, 9, 0)
++#define AUDIO_FIFO_MUTE_THR			0x0470
+ #define AFIFO_THR_MUTE_LOW_QST_MASK		GENMASK(25, 16)
+ #define AFIFO_THR_MUTE_LOW_QST(x)		UPDATE(x, 25, 16)
+ #define AFIFO_THR_MUTE_HIGH_QST_MASK		GENMASK(9, 0)
+ #define AFIFO_THR_MUTE_HIGH_QST(x)		UPDATE(x, 9, 0)
+ 
++#define AUDIO_FIFO_STATUS2			0x0478
+ #define AFIFO_UNDERFLOW_ST			BIT(25)
+ #define AFIFO_OVERFLOW_ST			BIT(24)
+ 
++#define AUDIO_PROC_CONFIG0			0x0480
+ #define SPEAKER_ALLOC_OVR_EN			BIT(16)
+ #define I2S_BPCUV_EN				BIT(4)
+ #define SPDIF_EN				BIT(2)
+--- a/include/drm/bridge/dw_hdmi_qp.h
++++ b/include/drm/bridge/dw_hdmi_qp.h
+@@ -23,6 +23,8 @@
+ 	const struct dw_hdmi_qp_phy_ops *phy_ops;
+ 	void *phy_data;
+ 	int main_irq;
++	int cec_irq;
++	unsigned long ref_clk_rate;
+ };
+ 
+ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,

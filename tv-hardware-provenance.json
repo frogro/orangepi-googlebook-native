@@ -1,0 +1,11 @@
+{
+  "base_commit": "5ee4216583a45ec2d6be494fd7e2c8a510e56123",
+  "base_run": 38273422197,
+  "kernel": "6.18.55",
+  "localversion": "-opi5plus-tv-hw1",
+  "cec_source": "https://patchew.org/linux/20250903-rk3588-hdmi-cec-v4-0-fa25163c4b08@collabora.com/",
+  "audio_source": "https://github.com/sky-rk3588/rk3588-hdmirx-audio",
+  "audio_commit": "af4be7a962695f7264e32c2cf45d48e80352065d",
+  "decoder_supply": "power-domain@RK3588_PD_VCODEC -> vdd_vdenc_s0, matching running DTB",
+  "validation": "Patch dry-run without fuzz and DT compile passed; kernel build and hardware CEC/audio tests pending"
+}

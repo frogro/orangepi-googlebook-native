@@ -1,4 +1,4 @@
-name: Orange Pi 5 Plus native Googlebook kernel
+name: Orange Pi 5 Plus Android TV HDMI CEC and capture kernel
 on:
   workflow_dispatch:
 permissions:
@@ -25,4 +25,4 @@ jobs:
           name: orangepi5-plus-googlebook-native-kernel-${{ github.run_id }}
           path: output/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
