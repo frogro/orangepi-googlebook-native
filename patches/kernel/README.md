@@ -46,3 +46,7 @@ requirement was observed failing in QEMU before the Keystore database panic.
 ARM64 object compilation and configuration checks are recorded in the config
 audit. Actual checkpoint create/commit/rollback and encrypted /data boot
 remain runtime tests; compilation alone does not certify update safety.
+
+## Android cgroup-v1 task migration
+
+`0004-android-cgroup-cap-sys-nice.patch` matches the capability exception in Android common `android16-6.12`. The native mainline kernel rejects cross-UID task migration by UID 1000 even though system_server has CAP_SYS_NICE. Live logs show AddTidToCgroup returning Permission denied; the cgroup files are already system-owned and writable. This is a kernel source change, not a configuration option. Boot validation must confirm that these errors disappear.

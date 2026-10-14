@@ -1,0 +1,21 @@
+From: Orange Pi Googlebook port
+Subject: [PATCH] cgroup: permit CAP_SYS_NICE task migration as in Android common
+
+Match android16-6.12 cgroup-v1 migration authorization. Android system_server
+runs as UID 1000 with CAP_SYS_NICE and moves application tasks across UIDs.
+Retain the existing owner checks, file permissions, and SELinux enforcement.
+
+Reference: https://android.googlesource.com/kernel/common/+/refs/heads/android16-6.12/kernel/cgroup/cgroup-v1.c
+
+--- a/kernel/cgroup/cgroup-v1.c
++++ b/kernel/cgroup/cgroup-v1.c
+@@ -523,7 +523,8 @@
+ 	tcred = get_task_cred(task);
+ 	if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
+ 	    !uid_eq(cred->euid, tcred->uid) &&
+-	    !uid_eq(cred->euid, tcred->suid))
++	    !uid_eq(cred->euid, tcred->suid) &&
++	    !ns_capable(tcred->user_ns, CAP_SYS_NICE))
+ 		ret = -EACCES;
+ 	put_cred(tcred);
+ 	if (ret)
