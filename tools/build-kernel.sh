@@ -2,7 +2,7 @@
 set -euo pipefail
 LAB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT_DIR="$LAB/work/builder"
-export LOCALVERSION=-opi5plus-tv-hw1
+export LOCALVERSION=-opi5plus-tv-hdmi-diag1
 mkdir -p "$LAB/work" "$LAB/output"
 readarray -t pins < <(python3 - "$LAB/sources.json" <<'PINS'
 import json,sys

@@ -28,3 +28,7 @@ cross-compilation passed for dm-default-key, BIO initialization, software crypto
 fallback, fscrypt inline integration, dm-table, blk-crypto and the TEE directory.
 The Plus DTB compiled and /firmware/optee reports linaro,optee-tz and smc.
 These checks do not replace encrypted-volume read/write and unlock tests.
+
+Diagnostic branch only: `0005-hdmirx-audio-diagnostics.patch` records the measured
+HDMI audio rate before fallback and periodic receiver state. See
+`docs/HDMI-AUDIO-DIAGNOSTIC-20261014.md`; this is instrumentation, not a fix.
