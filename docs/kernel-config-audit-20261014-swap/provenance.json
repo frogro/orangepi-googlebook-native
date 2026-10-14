@@ -1,0 +1,8 @@
+{
+  "original_config_sha256": "9ec0c9754b7ff0045eea4981a0386ad95ca267a799570eefbb6db2e9830f5969",
+  "running_config_sha256": "7376bc8fdc31cb357cc84747f77a9bab14898c500cd4a8bc2a719fc56a1c0a4e",
+  "base_commit": "2a8b43388c31bfb81df3c063a5f548e983d00185",
+  "base_github_run": 38562540372,
+  "symbols_compared": 9712,
+  "original_enabled_but_running_disabled_or_absent": 569
+}
