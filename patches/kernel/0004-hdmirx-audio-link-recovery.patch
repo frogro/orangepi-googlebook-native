@@ -1,0 +1,196 @@
+--- a/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
++++ b/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
+@@ -140,6 +140,10 @@
+ 	u32 audio_fs;
+ 	int audio_pre_state;
+ 	bool audio_streaming;
++	bool audio_running;
++	bool audio_link_ready;
++	bool audio_removing;
++	struct mutex audio_lock;
+ 	struct mutex stream_lock; /* to lock video stream capture */
+ 	struct mutex work_lock; /* to lock the critical section of hotplug event */
+ 	struct reset_control_bulk_data resets[HDMIRX_NUM_RST];
+@@ -621,8 +625,11 @@
+ 	enable_irq(hdmirx_dev->hdmi_irq);
+ }
+ 
++static void hdmirx_audio_link(struct snps_hdmirx_dev *hdmirx_dev, bool ready);
++
+ static void hdmirx_plugout(struct snps_hdmirx_dev *hdmirx_dev)
+ {
++	hdmirx_audio_link(hdmirx_dev, false);
+ 	if (!hdmirx_dev->plugged)
+ 		return;
+ 
+@@ -2137,6 +2144,8 @@
+ 
+ 	msleep(50);
+ 	hdmirx_format_change(hdmirx_dev);
++	/* Datapath reset has completed: replay audio setup after link lock. */
++	hdmirx_audio_link(hdmirx_dev, true);
+ 
+ 	return 0;
+ }
+@@ -2684,7 +2693,13 @@
+ 	int cur, total, single;
+ 	u32 fifo, fs;
+ 
++	if (!READ_ONCE(hdmirx_dev->audio_running))
++		return;
+ 	fs = hdmirx_audio_fs(hdmirx_dev);
++	if (!fs) {
++		delay = 1000;
++		goto out;
++	}
+ 	fifo = hdmirx_readl(hdmirx_dev, AUDIO_FIFO_STATUS2);
+ 
+ 	if (fifo & (AFIFO_UNDERFLOW_ST | AFIFO_OVERFLOW_ST)) {
+@@ -2718,27 +2733,27 @@
+ 	/* Only re-arm while streaming; avoids a self-reschedule race with
+ 	 * cancel_delayed_work_sync() in audio_shutdown().
+ 	 */
+-	if (READ_ONCE(hdmirx_dev->audio_streaming))
+-		schedule_delayed_work(&hdmirx_dev->audio_work,
++	if (READ_ONCE(hdmirx_dev->audio_running))
++		queue_delayed_work(system_unbound_wq, &hdmirx_dev->audio_work,
+ 				      msecs_to_jiffies(delay));
+ }
+ 
+-static int hdmirx_audio_hw_params(struct device *dev, void *data,
+-				  struct hdmi_codec_daifmt *fmt,
+-				  struct hdmi_codec_params *hparms)
+-{
+-	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
+-	u32 fs;
+-
+-	fs = hdmirx_audio_fs(hdmirx_dev);
+-	if (!fs)
+-		fs = hparms ? hparms->sample_rate : 48000;
+-	if (!fs)
+-		fs = 48000;
+-
++/* Control paths hold audio_lock. The worker never takes it, so draining
++ * cannot deadlock; disarm before cancel to prevent self-rescheduling. */
++static void hdmirx_audio_stop(struct snps_hdmirx_dev *hdmirx_dev)
++{
++	WRITE_ONCE(hdmirx_dev->audio_running, false);
++	cancel_delayed_work_sync(&hdmirx_dev->audio_work);
++}
++
++static int hdmirx_audio_setup(struct snps_hdmirx_dev *hdmirx_dev, u32 fs)
++{
++	int ret = clk_set_rate(hdmirx_dev->clks[1].clk, fs * 128);
++
++	if (ret)
++		return ret;
+ 	hdmirx_dev->audio_fs = fs;
+ 	hdmirx_dev->audio_clkrate = fs * 128;
+-	clk_set_rate(hdmirx_dev->clks[1].clk, fs * 128);
+ 
+ 	hdmirx_audio_fifo_reinit(hdmirx_dev);
+ 	hdmirx_writel(hdmirx_dev, AUDIO_FIFO_THR_PASS, HDMIRX_AUDIO_INIT_FIFO_STATE);
+@@ -2751,21 +2766,76 @@
+ 	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, AUDIO_ENABLE);
+ 
+ 	hdmirx_dev->audio_pre_state = 0;
+-	WRITE_ONCE(hdmirx_dev->audio_streaming, true);
+-	mod_delayed_work(system_unbound_wq, &hdmirx_dev->audio_work,
+-			 msecs_to_jiffies(200));
+-
+-	dev_dbg(dev, "audio hw_params: fs=%u\n", fs);
+ 	return 0;
+ }
+ 
++static void hdmirx_audio_link(struct snps_hdmirx_dev *hdmirx_dev, bool ready)
++{
++	mutex_lock(&hdmirx_dev->audio_lock);
++	hdmirx_audio_stop(hdmirx_dev);
++	hdmirx_dev->audio_link_ready = ready;
++	if (hdmirx_dev->audio_removing)
++		goto out;
++	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, 0);
++	if (ready && hdmirx_dev->audio_streaming &&
++	    !hdmirx_audio_setup(hdmirx_dev, hdmirx_dev->audio_fs)) {
++		WRITE_ONCE(hdmirx_dev->audio_running, true);
++		queue_delayed_work(system_unbound_wq, &hdmirx_dev->audio_work,
++				   msecs_to_jiffies(200));
++	}
++	dev_dbg(hdmirx_dev->dev, "audio link ready=%d streaming=%d running=%d\n",
++		ready, hdmirx_dev->audio_streaming, hdmirx_dev->audio_running);
++out:
++	mutex_unlock(&hdmirx_dev->audio_lock);
++}
++
++static int hdmirx_audio_hw_params(struct device *dev, void *data,
++				struct hdmi_codec_daifmt *fmt,
++				struct hdmi_codec_params *hparms)
++{
++	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
++	u32 fs;
++	int ret = 0;
++
++	mutex_lock(&hdmirx_dev->audio_lock);
++	if (hdmirx_dev->audio_removing) {
++		ret = -ENODEV;
++		goto out;
++	}
++	hdmirx_audio_stop(hdmirx_dev);
++	fs = hdmirx_audio_fs(hdmirx_dev);
++	if (!fs)
++		fs = hparms ? hparms->sample_rate : 48000;
++	if (!fs)
++		fs = 48000;
++	hdmirx_dev->audio_fs = fs;
++	hdmirx_dev->audio_streaming = true;
++	if (hdmirx_dev->audio_link_ready) {
++		ret = hdmirx_audio_setup(hdmirx_dev, fs);
++		if (ret) {
++			hdmirx_dev->audio_streaming = false;
++			goto out;
++		}
++		WRITE_ONCE(hdmirx_dev->audio_running, true);
++		queue_delayed_work(system_unbound_wq, &hdmirx_dev->audio_work,
++				   msecs_to_jiffies(200));
++	}
++	dev_dbg(dev, "audio hw_params: fs=%u ready=%d\n", fs,
++		hdmirx_dev->audio_link_ready);
++out:
++	mutex_unlock(&hdmirx_dev->audio_lock);
++	return ret;
++}
++
+ static void hdmirx_audio_shutdown(struct device *dev, void *data)
+ {
+ 	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
+ 
+-	WRITE_ONCE(hdmirx_dev->audio_streaming, false);
+-	cancel_delayed_work_sync(&hdmirx_dev->audio_work);
++	mutex_lock(&hdmirx_dev->audio_lock);
++	hdmirx_dev->audio_streaming = false;
++	hdmirx_audio_stop(hdmirx_dev);
+ 	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, 0);
++	mutex_unlock(&hdmirx_dev->audio_lock);
+ }
+ 
+ static int hdmirx_audio_get_dai_id(struct snd_soc_component *component,
+@@ -2843,6 +2913,7 @@
+ 
+ 	mutex_init(&hdmirx_dev->stream_lock);
+ 	mutex_init(&hdmirx_dev->work_lock);
++	mutex_init(&hdmirx_dev->audio_lock);
+ 	spin_lock_init(&hdmirx_dev->rst_lock);
+ 
+ 	init_completion(&hdmirx_dev->cr_write_done);
+@@ -2942,7 +3013,10 @@
+ 	struct device *dev = &pdev->dev;
+ 	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
+ 
+-	cancel_delayed_work_sync(&hdmirx_dev->audio_work);
++	mutex_lock(&hdmirx_dev->audio_lock);
++	hdmirx_dev->audio_removing = true;
++	hdmirx_audio_stop(hdmirx_dev);
++	mutex_unlock(&hdmirx_dev->audio_lock);
+ 	if (!IS_ERR_OR_NULL(hdmirx_dev->audio_pdev))
+ 		platform_device_unregister(hdmirx_dev->audio_pdev);
+ 
