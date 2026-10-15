@@ -1,0 +1,22 @@
+{
+  "purpose": "Trace native Rockchip KMS master acquisition, release and denied SET_MASTER requests without changing permission checks.",
+  "base_commit": "69aa843783ddc3213718d3b09123da140404daa1",
+  "runtime_evidence": {
+    "kernel": "6.18.55-opi5plus-googlebook-native",
+    "android": "17 mica 16471258",
+    "composer_caps": "SYS_NICE and SYS_ADMIN verified",
+    "failure": "DRM/KMS master access required; headless null display",
+    "hardware_probe": "rockchip card0 exposes 3 CRTCs, 3 connectors; panthor card1 is render-only",
+    "diagnostic_limit": "SELinux blocks reading other process fd tables and live policy reload; no permissive mode used"
+  },
+  "expected_log_markers": [
+    "GBDRM acquire",
+    "GBDRM release",
+    "GBDRM setmaster"
+  ],
+  "validation": [
+    "Patch applies to Linux 6.18.55 with zero fuzz",
+    "No capability or DRM master ownership checks removed",
+    "CI compilation and physical runtime test still required"
+  ]
+}

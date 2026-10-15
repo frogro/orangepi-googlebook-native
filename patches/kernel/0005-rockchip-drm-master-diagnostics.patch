@@ -1,0 +1,67 @@
+--- a/drivers/gpu/drm/drm_auth.c
++++ b/drivers/gpu/drm/drm_auth.c
+@@ -30,6 +30,8 @@
+ 
+ #include <linux/export.h>
+ #include <linux/slab.h>
++#include <linux/sched.h>
++#include <linux/string.h>
+ 
+ #include <drm/drm_auth.h>
+ #include <drm/drm_drv.h>
+@@ -157,6 +159,11 @@
+ 		dev->driver->master_set(dev, fpriv, new_master);
+ 
+ 	fpriv->was_master = true;
++	/* Temporary native Googlebook ownership diagnostics; no access changes. */
++	if (!strcmp(dev->driver->name, "rockchip"))
++		pr_info("GBDRM acquire pid=%d comm=%s minor=%d new=%d\n",
++			task_tgid_nr(current), current->comm, fpriv->minor->index,
++			new_master);
+ }
+ 
+ static int drm_new_set_master(struct drm_device *dev, struct drm_file *fpriv)
+@@ -250,17 +257,29 @@
+ 	guard(mutex)(&dev->master_mutex);
+ 
+ 	ret = drm_master_check_perm(dev, file_priv);
+-	if (ret)
++	if (ret) {
++		if (!strcmp(dev->driver->name, "rockchip"))
++			pr_info("GBDRM setmaster pid=%d comm=%s ret=%d reason=permission\n",
++				task_tgid_nr(current), current->comm, ret);
+ 		return ret;
++	}
+ 
+ 	if (drm_is_current_master_locked(file_priv))
+ 		return ret;
+ 
+-	if (dev->master)
++	if (dev->master) {
++		if (!strcmp(dev->driver->name, "rockchip"))
++			pr_info("GBDRM setmaster pid=%d comm=%s ret=%d reason=owner-exists\n",
++				task_tgid_nr(current), current->comm, -EBUSY);
+ 		return -EBUSY;
+-
+-	if (!file_priv->master)
++	}
++
++	if (!file_priv->master) {
++		if (!strcmp(dev->driver->name, "rockchip"))
++			pr_info("GBDRM setmaster pid=%d comm=%s ret=%d reason=no-master-object\n",
++				task_tgid_nr(current), current->comm, -EINVAL);
+ 		return -EINVAL;
++	}
+ 
+ 	if (!file_priv->is_master)
+ 		return drm_new_set_master(dev, file_priv);
+@@ -280,6 +299,9 @@
+ static void drm_drop_master(struct drm_device *dev,
+ 			    struct drm_file *fpriv)
+ {
++	if (!strcmp(dev->driver->name, "rockchip"))
++		pr_info("GBDRM release pid=%d comm=%s minor=%d\n",
++			task_tgid_nr(current), current->comm, fpriv->minor->index);
+ 	if (dev->driver->master_drop)
+ 		dev->driver->master_drop(dev, fpriv);
+ 	drm_master_put(&dev->master);
