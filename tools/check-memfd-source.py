@@ -18,3 +18,11 @@ for file,needles in checks.items():
  text=(p/file).read_text()
  for needle in needles:assert needle in text,(file,needle)
 print('memfd_class ABI13, labeling hook, execution checks and policy gate verified')
+
+# Reject incomplete ashmem compatibility backports.
+shim = (p / "mm/memfd-ashmem-shim.c").read_text()
+shmem = (p / "mm/shmem.c").read_text()
+assert "ASHMEM_GET_SIZE" in shim and "i_size_read" in shim
+assert "memfd_ashmem_shim_ioctl" in shmem
+assert "memfd_ashmem_shim_compat_ioctl" in shmem
+print("Ashmem/memfd ioctl shim: present and wired")

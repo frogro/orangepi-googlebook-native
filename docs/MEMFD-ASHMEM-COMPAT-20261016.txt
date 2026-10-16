@@ -1,0 +1,23 @@
+Android 17 memfd compatibility diagnostic kernel
+================================================
+Extends 0404c6d (memfd SELinux class) without dropping KVM/vsock or prior patches.
+
+Live baseline: vendor API 202604, memfd_class policy capability set, kernel
+missing support. FMQ mmap EACCES during Prime playback. Separate native test
+using ASHMEM_GET_SIZE = _IO(0x77,4) on a 4096-byte memfd returns ENOTTY.
+libcutils ashmem_get_size_region returns 4096, so the legacy ioctl gap alone
+has NOT been proven to cause Prime or MediaExtractor failures.
+
+Sources:
+https://android.googlesource.com/kernel/common-patches/+/refs/heads/main-kernel/android-mainline/ANDROID-mm-memfd-ashmem-shim-Introduce-shim-layer.patch
+https://android.googlesource.com/kernel/common-patches/+/refs/heads/main-kernel/android-mainline/ANDROID-mm-shmem-Use-memfd-ashmem-shim-ioctl-handler.patch
+
+0007 is the upstream Android C shim, including variable-length-array and
+name retrieval fixes. 0008 wires native/compat ioctls to shmem on Linux6.18.55.
+Unlike current ACK, this tree has no ASHMEM_C/RUST. Keep MEMFD_CREATE dependency
+and explicitly enable MEMFD_ASHMEM_SHIM, rather than introducing an ashmem driver.
+
+Validation before dispatch: both patches apply without fuzz to v6.18.55;
+memfd ABI/source guard and shell syntax pass. GitHub must compile and config
+validate. Runtime acceptance: policycap13 enabled; ASHMEM_GET_SIZE returns4096;
+FMQ/AAC, extractor and Prime retests under enforcing SELinux. No runtime claim yet.

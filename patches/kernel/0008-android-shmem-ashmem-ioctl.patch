@@ -1,0 +1,31 @@
+Subject: [PATCH] Android: wire ashmem compatibility ioctls to shmem
+
+Adapted from Android common-patches ANDROID-mm-shmem-Use-memfd-ashmem-shim-ioctl-handler.patch.
+Use the C shim only; this mainline tree has neither ASHMEM_C nor ASHMEM_RUST.
+Keep MEMFD_CREATE dependency and explicitly enable the shim in native.config.
+
+--- a/mm/shmem.c
++++ b/mm/shmem.c
+@@ -85,6 +85,9 @@
+ #include <linux/uaccess.h>
+ 
+ #include "internal.h"
++#ifdef CONFIG_MEMFD_ASHMEM_SHIM
++#include "memfd-ashmem-shim.h"
++#endif
+ 
+ #define VM_ACCT(size)    (PAGE_ALIGN(size) >> PAGE_SHIFT)
+ 
+@@ -5253,6 +5256,12 @@
+ };
+ 
+ static const struct file_operations shmem_file_operations = {
++#ifdef CONFIG_MEMFD_ASHMEM_SHIM
++	.unlocked_ioctl = memfd_ashmem_shim_ioctl,
++#ifdef CONFIG_COMPAT
++	.compat_ioctl = memfd_ashmem_shim_compat_ioctl,
++#endif
++#endif
+ 	.mmap		= shmem_mmap,
+ 	.open		= shmem_file_open,
+ 	.get_unmapped_area = shmem_get_unmapped_area,
