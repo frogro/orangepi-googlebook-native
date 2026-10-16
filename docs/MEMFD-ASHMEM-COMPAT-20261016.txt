@@ -21,3 +21,13 @@ Validation before dispatch: both patches apply without fuzz to v6.18.55;
 memfd ABI/source guard and shell syntax pass. GitHub must compile and config
 validate. Runtime acceptance: policycap13 enabled; ASHMEM_GET_SIZE returns4096;
 FMQ/AAC, extractor and Prime retests under enforcing SELinux. No runtime claim yet.
+
+Additional confirmed Android17 integration gap: BPF loader reports kernel BTF
+missing at /sys/kernel/btf/vmlinux and cannot load dmabufIter.bpf. Current
+CONFIG_PAHOLE_VERSION=0; workflow never installed pahole. Linux6.18.55 already
+contains kernel/bpf/dmabuf_iter.c. Install dwarves, enable DWARF4+BTF and module
+BTF, require those options in final config. This fixes the missing prerequisite;
+actual BPF loading still requires runtime validation.
+Sources: https://android.googlesource.com/platform/system/bpfprogs/+/refs/tags/android-security-17.0.0_r1/dmabufIter.c
+https://github.com/gregkh/linux/blob/v6.18.55/lib/Kconfig.debug
+https://github.com/gregkh/linux/blob/v6.18.55/kernel/bpf/dmabuf_iter.c
