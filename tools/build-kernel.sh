@@ -31,6 +31,7 @@ for patch_file in "$LAB"/patches/kernel/*.patch; do
     patch --batch --fuzz=0 -p1 -d "$src" < "$patch_file"
   fi
 done
+python3 "$LAB/tools/check-memfd-source.py" "$src"
 out="$LAB/work/kernel"
 mkdir -p "$out"
 ARCH=arm64 "$src/scripts/kconfig/merge_config.sh" -m -O "$out" "$LAB/config/board-reference.config" "$LAB/config/android.config" "$LAB/config/android-crypto.config" "$LAB/config/native.config"
