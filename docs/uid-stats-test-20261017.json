@@ -1,13 +1,16 @@
 {
   "kernel_base": "6.18.55",
-  "purpose": "CPU UID statistics test; preserve hdmi1 kernel fixes",
+  "purpose": "CPU UID and per-thread frequency statistics test; preserve hdmi1 kernel fixes",
   "sources": [
     "https://android.googlesource.com/kernel/common-patches/+/3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16/android-mainline/ANDROID-uid_sys_stats-Adds-accounting-for-the-cputimes-per-uid.patch",
-    "https://android.googlesource.com/kernel/common-patches/+/3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16/android-mainline/Revert-exit-Remove-profile_task_exit-profile_munmap.patch"
+    "https://android.googlesource.com/kernel/common-patches/+/3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16/android-mainline/Revert-exit-Remove-profile_task_exit-profile_munmap.patch",
+    "https://android.googlesource.com/kernel/common-patches/+/3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16/android-mainline/ANDROID-cpufreq-track-per-task-time-in-state.patch"
   ],
   "port_adjustments": [
     "Relocate exit notifier insertion before kcov_task_exit in 6.18.55",
-    "Append UID_SYS_STATS Makefile entry in current misc Makefile"
+    "Append UID_SYS_STATS Makefile entry in current misc Makefile",
+    "Adapt include and proc table contexts to Linux 6.18.55",
+    "Record per-task frequency transitions on cpufreq fast-switch path too"
   ],
   "sha256": "765fa475ad3ce66afede07851f5f6201e8d5f7265260391b88f00abc617c6d88",
   "runtime_tested": false,
@@ -17,6 +20,29 @@
     "Measure nonzero increasing CPU time for test UID before/after workload and task exit",
     "Verify no duplicate accounting and UID cleanup",
     "Repeat audio XRUN and AV sync tests",
-    "No blind suspend test; first capture persistent resume diagnostics"
-  ]
+    "No blind suspend test; first capture persistent resume diagnostics",
+    "Verify /proc/self/time_in_state and /proc/PID/task/TID/time_in_state exist and increase under load",
+    "Confirm frequency list matches CPU policies, process creation and exit remain stable",
+    "Confirm missing CPU-statistics log errors disappear without masking them"
+  ],
+  "kernel_release": "6.18.55-opi5plus-googlebook-cpustats2",
+  "cpufreq_patch_sha256": "7c8e97c2148f14e566ff371af2a661422b7aedc4ca1a4e79b18ae11631bee6cc",
+  "local_validation": {
+    "date": "2026-10-17T17:24:59.842597",
+    "patch_application": "Both patches apply to Linux 6.18.55 with --fuzz=0",
+    "arm64_object_compile": "PASS",
+    "objects": [
+      "drivers/misc/uid_sys_stats.o",
+      "drivers/cpufreq/cpufreq_times.o",
+      "drivers/cpufreq/cpufreq.o",
+      "fs/proc/base.o",
+      "kernel/fork.o",
+      "kernel/sched/build_policy.o",
+      "kernel/exit.o",
+      "kernel/profile.o",
+      "mm/mmap.o"
+    ],
+    "symbol_references": "Scheduler and proc reader reference cpufreq accounting implementation",
+    "scope": "Targeted object compilation with ARM64 defconfig plus both statistics; complete board build and runtime tests pending"
+  }
 }

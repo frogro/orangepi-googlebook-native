@@ -52,3 +52,18 @@ remain runtime tests; compilation alone does not certify update safety.
 `0004-android-cgroup-cap-sys-nice.patch` matches the capability exception in Android common `android16-6.12`. The native mainline kernel rejects cross-UID task migration by UID 1000 even though system_server has CAP_SYS_NICE. Live logs show AddTidToCgroup returning Permission denied; the cgroup files are already system-owned and writable. This is a kernel source change, not a configuration option. Boot validation must confirm that these errors disappear.
 
 Android17 memfd_class: 0006 backports upstream 094e94d13b606b820e3d1383e3a361f680ff023a. Only old_tsec/new_tsec names were adapted to old_crsec/new_crsec for 6.18.55. Policy capability index13 is preserved. No global SELinux relaxation. This is required for Googlebook vendor API202604 shared buffers; hardware AAC test remains pending.
+
+## CPU accounting test on 6.18.55
+
+`0011` adds AOSP per-UID user/system CPU accounting and its exit notifier.
+`0012` adds AOSP per-task time at each CPU frequency, exposed at
+`/proc/PID/time_in_state` and `/proc/PID/task/TID/time_in_state`.
+Both are pinned to Android common-patches commit
+`3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16`; source URLs and port changes
+are in `docs/uid-stats-test-20261017.json`. Original copyright and GPL notices
+are preserved. The frequency patch also records fast-switch transitions.
+
+The build requires `UID_SYS_STATS=y` and `CPU_FREQ_TIMES=y` and checks the
+resulting kernel symbols. This is a test kernel: successful compilation is
+not a runtime test of accounting accuracy, scheduling cost, or audio stability.
+The V5 composer is a separate userspace component, not part of this bundle.

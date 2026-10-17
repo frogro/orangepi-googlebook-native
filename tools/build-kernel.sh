@@ -2,7 +2,7 @@
 set -euo pipefail
 LAB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT_DIR="$LAB/work/builder"
-export LOCALVERSION=-opi5plus-googlebook-uidtest1
+export LOCALVERSION=-opi5plus-googlebook-cpustats2
 mkdir -p "$LAB/work" "$LAB/output"
 readarray -t pins < <(python3 - "$LAB/sources.json" <<'PINS'
 import json,sys
@@ -46,6 +46,8 @@ cp "$out/.config" "$LAB/output/kernel.config"
 cp "$out/System.map" "$LAB/output/System.map"
 grep -q " profile_task_exit$" "$out/System.map"
 grep -q " uid_cputime_show$" "$out/System.map"
+grep -q " proc_time_in_state_show$" "$out/System.map"
+grep -q " cpufreq_acct_update_power$" "$out/System.map"
 cp "$LAB/sources.json" "$LAB/output/"
 cp "$src/.vyos-kernel-prepared" "$LAB/output/source-provenance.txt"
 make -s -C "$src" O="$out" ARCH=arm64 kernelrelease > "$LAB/output/kernel.release"
