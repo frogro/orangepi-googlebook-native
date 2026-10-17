@@ -1,0 +1,193 @@
+From: Frank Zhang <rmxpzlb@gmail.com>
+Subject: [PATCH] drm/bridge: dw-hdmi-qp: serialize PHY and audio (6.18 backport)
+
+Based on v6 https://lore.kernel.org/all/20260915103433.13163-1-rmxpzlb@gmail.com/
+Backport adaptation: 6.18 uses shared clear/write infoframe callbacks.
+Protect those callbacks with the same PHY mutex; keep raw clearing in
+an unlocked helper to avoid recursive locking. Preserve the 6.18 API.
+The update_audio_infoframe call remains outside the PHY lock because it
+re-enters the protected infoframe callback. Experimental, hardware test pending.
+
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+@@ -58,6 +58,8 @@
+ 	struct {
+ 		const struct dw_hdmi_qp_phy_ops *ops;
+ 		void *data;
++		struct mutex lock;
++		bool enabled;
+ 	} phy;
+ 
+ 	struct regmap *regm;
+@@ -239,6 +241,10 @@
+ {
+ 	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
+ 
++	guard(mutex)(&hdmi->phy.lock);
++	if (!hdmi->phy.enabled)
++		return -EOPNOTSUPP;
++
+ 	if (hdmi->tmds_char_rate)
+ 		dw_hdmi_qp_mod(hdmi, 0, AVP_DATAPATH_PACKET_AUDIO_SWDISABLE, GLOBAL_SWDISABLE);
+ 
+@@ -252,13 +258,22 @@
+ {
+ 	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
+ 	bool ref2stream = false;
+-
+-	if (!hdmi->tmds_char_rate)
+-		return -ENODEV;
++	int ret = 0;
++
++	mutex_lock(&hdmi->phy.lock);
++	if (!hdmi->phy.enabled) {
++		ret = -EOPNOTSUPP;
++		goto out_unlock;
++	}
++	if (!hdmi->tmds_char_rate) {
++		ret = -ENODEV;
++		goto out_unlock;
++	}
+ 
+ 	if (fmt->bit_clk_provider | fmt->frame_clk_provider) {
+ 		dev_err(hdmi->dev, "unsupported clock settings\n");
+-		return -EINVAL;
++		ret = -EINVAL;
++		goto out_unlock;
+ 	}
+ 
+ 	if (fmt->bit_fmt == SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE)
+@@ -267,9 +282,13 @@
+ 	dw_hdmi_qp_set_audio_interface(hdmi, fmt, hparms);
+ 	dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate, hparms->sample_rate);
+ 	dw_hdmi_qp_set_channel_status(hdmi, hparms->iec.status, ref2stream);
+-	drm_atomic_helper_connector_hdmi_update_audio_infoframe(connector, &hparms->cea);
+-
+-	return 0;
++	mutex_unlock(&hdmi->phy.lock);
++
++	return drm_atomic_helper_connector_hdmi_update_audio_infoframe(connector, &hparms->cea);
++
++out_unlock:
++	mutex_unlock(&hdmi->phy.lock);
++	return ret;
+ }
+ 
+ static void dw_hdmi_qp_audio_disable_regs(struct dw_hdmi_qp *hdmi)
+@@ -297,6 +316,10 @@
+ 	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
+ 
+ 	drm_atomic_helper_connector_hdmi_clear_audio_infoframe(connector);
++
++	guard(mutex)(&hdmi->phy.lock);
++	if (!hdmi->phy.enabled)
++		return;
+ 
+ 	if (hdmi->tmds_char_rate)
+ 		dw_hdmi_qp_audio_disable_regs(hdmi);
+@@ -632,6 +655,7 @@
+ 	struct drm_connector_state *conn_state;
+ 	struct drm_connector *connector;
+ 	unsigned int op_mode;
++	int ret;
+ 
+ 	connector = drm_atomic_get_new_connector_for_encoder(state, bridge->encoder);
+ 	if (WARN_ON(!connector))
+@@ -641,6 +665,7 @@
+ 	if (WARN_ON(!conn_state))
+ 		return;
+ 
++	mutex_lock(&hdmi->phy.lock);
+ 	if (connector->display_info.is_hdmi) {
+ 		dev_dbg(hdmi->dev, "%s mode=HDMI rate=%llu\n",
+ 			__func__, conn_state->hdmi.tmds_char_rate);
+@@ -651,11 +676,21 @@
+ 		op_mode = OPMODE_DVI;
+ 	}
+ 
+-	hdmi->phy.ops->init(hdmi, hdmi->phy.data);
++	ret = hdmi->phy.ops->init(hdmi, hdmi->phy.data);
++	if (ret) {
++		dev_err(hdmi->dev, "failed to initialize PHY: %d\n", ret);
++		hdmi->phy.enabled = false;
++		hdmi->tmds_char_rate = 0;
++		mutex_unlock(&hdmi->phy.lock);
++		return;
++	}
++	hdmi->phy.enabled = true;
+ 
+ 	dw_hdmi_qp_mod(hdmi, HDCP2_BYPASS, HDCP2_BYPASS, HDCP2LOGIC_CONFIG0);
+ 	dw_hdmi_qp_mod(hdmi, op_mode, OPMODE_DVI, LINK_CONFIG0);
+ 
++	mutex_unlock(&hdmi->phy.lock);
++
+ 	drm_atomic_helper_connector_hdmi_update_infoframes(connector, state);
+ }
+ 
+@@ -664,9 +699,10 @@
+ {
+ 	struct dw_hdmi_qp *hdmi = bridge->driver_private;
+ 
++	guard(mutex)(&hdmi->phy.lock);
+ 	hdmi->tmds_char_rate = 0;
+-
+ 	hdmi->phy.ops->disable(hdmi, hdmi->phy.data);
++	hdmi->phy.enabled = false;
+ }
+ 
+ static enum drm_connector_status
+@@ -706,11 +742,9 @@
+ 	return MODE_OK;
+ }
+ 
+-static int dw_hdmi_qp_bridge_clear_infoframe(struct drm_bridge *bridge,
+-					     enum hdmi_infoframe_type type)
+-{
+-	struct dw_hdmi_qp *hdmi = bridge->driver_private;
+-
++static int dw_hdmi_qp_clear_infoframe_regs(struct dw_hdmi_qp *hdmi,
++					 enum hdmi_infoframe_type type)
++{
+ 	switch (type) {
+ 	case HDMI_INFOFRAME_TYPE_AVI:
+ 		dw_hdmi_qp_mod(hdmi, 0, PKTSCHED_AVI_TX_EN | PKTSCHED_GCP_TX_EN,
+@@ -735,13 +769,29 @@
+ 	return 0;
+ }
+ 
++static int dw_hdmi_qp_bridge_clear_infoframe(struct drm_bridge *bridge,
++					     enum hdmi_infoframe_type type)
++{
++	struct dw_hdmi_qp *hdmi = bridge->driver_private;
++
++	guard(mutex)(&hdmi->phy.lock);
++	if (!hdmi->phy.enabled)
++		return 0;
++
++	return dw_hdmi_qp_clear_infoframe_regs(hdmi, type);
++}
++
+ static int dw_hdmi_qp_bridge_write_infoframe(struct drm_bridge *bridge,
+ 					     enum hdmi_infoframe_type type,
+ 					     const u8 *buffer, size_t len)
+ {
+ 	struct dw_hdmi_qp *hdmi = bridge->driver_private;
+ 
+-	dw_hdmi_qp_bridge_clear_infoframe(bridge, type);
++	guard(mutex)(&hdmi->phy.lock);
++	if (!hdmi->phy.enabled)
++		return -EOPNOTSUPP;
++
++	dw_hdmi_qp_clear_infoframe_regs(hdmi, type);
+ 
+ 	switch (type) {
+ 	case HDMI_INFOFRAME_TYPE_AVI:
+@@ -859,6 +909,8 @@
+ 
+ 	hdmi->phy.ops = plat_data->phy_ops;
+ 	hdmi->phy.data = plat_data->phy_data;
++	mutex_init(&hdmi->phy.lock);
++	hdmi->phy.enabled = false;
+ 
+ 	dw_hdmi_qp_init_hw(hdmi);
+ 

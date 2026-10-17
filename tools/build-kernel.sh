@@ -2,7 +2,7 @@
 set -euo pipefail
 LAB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT_DIR="$LAB/work/builder"
-export LOCALVERSION=-opi5plus-googlebook-native
+export LOCALVERSION=-opi5plus-googlebook-hdmi1
 mkdir -p "$LAB/work" "$LAB/output"
 readarray -t pins < <(python3 - "$LAB/sources.json" <<'PINS'
 import json,sys
