@@ -2,7 +2,7 @@
 set -euo pipefail
 LAB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT_DIR="$LAB/work/builder"
-export LOCALVERSION=-opi5plus-googlebook-hdmi1
+export LOCALVERSION=-opi5plus-googlebook-uidtest1
 mkdir -p "$LAB/work" "$LAB/output"
 readarray -t pins < <(python3 - "$LAB/sources.json" <<'PINS'
 import json,sys
@@ -43,6 +43,9 @@ make -C "$src" O="$out" ARCH=arm64 INSTALL_MOD_PATH="$LAB/output/modules" INSTAL
 find "$LAB/output/modules" -type l \( -name build -o -name source \) -delete
 cp "$out/arch/arm64/boot/Image" "$out/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dtb" "$LAB/output/"
 cp "$out/.config" "$LAB/output/kernel.config"
+cp "$out/System.map" "$LAB/output/System.map"
+grep -q " profile_task_exit$" "$out/System.map"
+grep -q " uid_cputime_show$" "$out/System.map"
 cp "$LAB/sources.json" "$LAB/output/"
 cp "$src/.vyos-kernel-prepared" "$LAB/output/source-provenance.txt"
 make -s -C "$src" O="$out" ARCH=arm64 kernelrelease > "$LAB/output/kernel.release"

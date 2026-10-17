@@ -1,0 +1,22 @@
+{
+  "kernel_base": "6.18.55",
+  "purpose": "CPU UID statistics test; preserve hdmi1 kernel fixes",
+  "sources": [
+    "https://android.googlesource.com/kernel/common-patches/+/3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16/android-mainline/ANDROID-uid_sys_stats-Adds-accounting-for-the-cputimes-per-uid.patch",
+    "https://android.googlesource.com/kernel/common-patches/+/3bd4a088c4e95c4fa9c2b93271c74e5e91c52c16/android-mainline/Revert-exit-Remove-profile_task_exit-profile_munmap.patch"
+  ],
+  "port_adjustments": [
+    "Relocate exit notifier insertion before kcov_task_exit in 6.18.55",
+    "Append UID_SYS_STATS Makefile entry in current misc Makefile"
+  ],
+  "sha256": "765fa475ad3ce66afede07851f5f6201e8d5f7265260391b88f00abc617c6d88",
+  "runtime_tested": false,
+  "suspend_patches_included": false,
+  "test_plan": [
+    "Verify uid_cputime show_uid_stat and remove_uid_range exist",
+    "Measure nonzero increasing CPU time for test UID before/after workload and task exit",
+    "Verify no duplicate accounting and UID cleanup",
+    "Repeat audio XRUN and AV sync tests",
+    "No blind suspend test; first capture persistent resume diagnostics"
+  ]
+}
